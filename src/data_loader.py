@@ -15,9 +15,9 @@ def load_raw_spectra(mzml_path, max_spectra=5000):
     count = 0
     with mzml.read(mzml_path) as reader:
         for spectrum in reader:
-            scan_match = re.search(r'scan=(\d+)', spectrum['id'])
-            if not scan_match: continue
-                
+            scan_match = re.search(r'scan=(\d+)', spectrum.get('id', ''))
+            if not scan_match:
+                continue
             scan_num = int(scan_match.group(1))
             
             mzs = spectrum.get('m/z array', np.array([]))
