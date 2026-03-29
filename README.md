@@ -1,6 +1,7 @@
 # Peptide and Protein Sequencing by Multinomial Diffusion Model
 
 **Team**: Akshay Mohan Revankar, Sanika Nanjan, Vaishak Girish Kumar
+**GitHub**: https://github.com/AkshayRevankarDev/peptide-diffusion
 
 ## Description
 This project implements a de novo peptide sequencing pipeline from tandem mass spectrometry (MS/MS) data, collected from E. coli EV and wastewater samples. The final goal is to develop a Multinomial Diffusion Model for accurate sequencing. This repository currently contains the Checkpoint 1 deliverables: data exploration, a generic preprocessing pipeline, and a simple encoder-decoder LSTM baseline model.
