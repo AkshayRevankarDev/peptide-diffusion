@@ -1,0 +1,13 @@
+pandas
+numpy
+matplotlib
+seaborn
+pyteomics
+lxml
+openpyxl
+torch
+scikit-learn
+jupyter
+reportlab
+fastparquet
+pyarrow
