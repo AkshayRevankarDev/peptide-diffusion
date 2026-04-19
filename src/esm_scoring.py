@@ -149,45 +149,53 @@ def run_esm_scoring(diffusion_csv: str,
     print("Loading ESM-2 model …")
     model, tokenizer = _load_esm2()
 
-    sequences_to_score = []   # (seq, model_label, is_correct, spectrum_id)
+    # (seq, model_label, is_correct, spectrum_id, spectral_logprob)
+    sequences_to_score = []
+    # spectral_logprob lookup keyed by (model, spectrum_id) for anomaly detection
+    sp_lp_lookup: dict = {}
 
     # ── diffusion predictions ─────────────────────────────────────────────────
+    # CSV columns: spectrum_id, sequence, spectral_logprob, gate_confidence
     if os.path.exists(diffusion_csv):
         df_diff = pd.read_csv(diffusion_csv)
-        for _, row in df_diff.iterrows():
-            sequences_to_score.append((
-                str(row["sequence"]),
-                "diffusion",
-                False,                   # is_correct unknown for wastewater
-                int(row.get("spectrum_id", -1)),
-            ))
+        for idx, row in df_diff.iterrows():
+            sid  = int(row.get("spectrum_id", idx))
+            slp  = float(row.get("spectral_logprob", float("nan")))
+            seq  = str(row["sequence"])
+            sequences_to_score.append((seq, "diffusion", False, sid, slp))
+            sp_lp_lookup[("diffusion", sid)] = slp
 
     # ── LSTM predictions ──────────────────────────────────────────────────────
+    # CSV columns (from 03_baseline.ipynb): predicted_sequence, true_sequence, correct
     if lstm_csv and os.path.exists(lstm_csv):
         df_lstm = pd.read_csv(lstm_csv)
-        for _, row in df_lstm.iterrows():
-            sequences_to_score.append((
-                str(row["sequence"]),
-                "lstm",
-                bool(row.get("is_correct", False)),
-                int(row.get("spectrum_id", -1)),
-            ))
+        for idx, row in df_lstm.iterrows():
+            pred_seq = str(row.get("predicted_sequence", row.get("sequence", "")))
+            is_ok    = bool(row.get("correct", row.get("is_correct", False)))
+            sid      = int(row.get("spectrum_id", idx))
+            sequences_to_score.append((pred_seq, "lstm", is_ok, sid, float("nan")))
+            # collect ground-truth sequences from this CSV
+            gt_seq = str(row.get("true_sequence", ""))
+            if gt_seq and len(gt_seq) >= 5 and gt_seq not in (gt_sequences or []):
+                if gt_sequences is None:
+                    gt_sequences = []
+                if gt_seq not in gt_sequences:
+                    gt_sequences.append(gt_seq)
 
     # ── GRU predictions ───────────────────────────────────────────────────────
+    # CSV columns (from 03_baseline.ipynb): predicted_sequence, true_sequence, correct
     if gru_csv and os.path.exists(gru_csv):
         df_gru = pd.read_csv(gru_csv)
-        for _, row in df_gru.iterrows():
-            sequences_to_score.append((
-                str(row["sequence"]),
-                "gru",
-                bool(row.get("is_correct", False)),
-                int(row.get("spectrum_id", -1)),
-            ))
+        for idx, row in df_gru.iterrows():
+            pred_seq = str(row.get("predicted_sequence", row.get("sequence", "")))
+            is_ok    = bool(row.get("correct", row.get("is_correct", False)))
+            sid      = int(row.get("spectrum_id", idx))
+            sequences_to_score.append((pred_seq, "gru", is_ok, sid, float("nan")))
 
     # ── Ground-truth sequences ────────────────────────────────────────────────
     if gt_sequences:
         for i, seq in enumerate(gt_sequences):
-            sequences_to_score.append((seq, "ground_truth", True, i))
+            sequences_to_score.append((seq, "ground_truth", True, i, float("nan")))
 
     # ── Random baseline ───────────────────────────────────────────────────────
     import random
@@ -195,12 +203,19 @@ def run_esm_scoring(diffusion_csv: str,
     random.seed(0)
     for i in range(50):
         rand_seq = "".join(random.choices(aa_chars, k=random.randint(8, 20)))
-        sequences_to_score.append((rand_seq, "random", False, i))
+        sequences_to_score.append((rand_seq, "random", False, i, float("nan")))
 
     print(f"Scoring {len(sequences_to_score)} sequences …")
-    rows = score_sequences(sequences_to_score, model, tokenizer)
+    # score_sequences only takes 4-tuples; strip spectral_logprob before passing
+    rows = score_sequences([(s, m, c, sid) for s, m, c, sid, _ in sequences_to_score],
+                           model, tokenizer)
 
     df = pd.DataFrame(rows)
+
+    # Attach spectral_logprob back for diffusion rows (used by anomaly detection)
+    def _get_slp(row):
+        return sp_lp_lookup.get((row["model"], row["spectrum_id"]), float("nan"))
+    df["spectral_logprob"] = df.apply(_get_slp, axis=1)
 
     # ── NOVEL #6: anomaly detection ───────────────────────────────────────────
     if gt_sequences:
@@ -295,8 +310,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="ESM-2 per-residue scorer")
     parser.add_argument("--diffusion_csv", default="results/diffusion_predictions.csv")
-    parser.add_argument("--lstm_csv",      default=None)
-    parser.add_argument("--gru_csv",       default=None)
+    parser.add_argument("--lstm_csv",      default="results/lstm_predictions.csv")
+    parser.add_argument("--gru_csv",       default="results/gru_predictions.csv")
     parser.add_argument("--out_csv",       default="results/esm2_scores.csv")
     parser.add_argument("--figures_dir",   default="figures")
     args = parser.parse_args()
