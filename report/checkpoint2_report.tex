@@ -66,14 +66,12 @@ ReLU and Dropout(0.3), mapping binned spectra to a 256-dim context vector~$\math
 \paragraph{TransformerDenoiser.}
 Given noisy tokens $x_t$, timestep $t$, and context $\mathbf{s}$, the denoiser
 predicts the clean sequence $x_0$ in a single forward pass:
-\begin{itemize}[nosep]
-  \item \textbf{Input:} token embedding \texttt{nn.Embedding(23, 256)} plus learned
-    positional embedding; sinusoidal timestep embedding added to all positions.
-  \item \textbf{Decoder stack:} $4\times$ \texttt{TransformerDecoderLayer}
-    ($d=256$, $h=8$, $d_\text{ff}=512$, \texttt{norm\_first=True}),
-    cross-attending to $\mathbf{s}$ as a length-1 memory.
-  \item \textbf{Output:} Linear$(256\!\to\!23)$ giving logits $(B, 32, 23)$.
-\end{itemize}
+The input combines a token embedding \texttt{nn.Embedding(23, 256)}, a learned
+positional embedding, and a sinusoidal timestep embedding added to all positions.
+The decoder stack consists of $4\times$ \texttt{TransformerDecoderLayer}
+($d=256$, $h=8$, $d_\text{ff}=512$, \texttt{norm\_first=True}), cross-attending
+to $\mathbf{s}$ as a length-1 memory sequence.
+The output projection Linear$(256\!\to\!23)$ gives logits of shape $(B, 32, 23)$.
 
 \paragraph{Forward process.}
 Categorical diffusion with $T=200$ timesteps, linear schedule
