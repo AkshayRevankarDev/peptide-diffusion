@@ -1,6 +1,6 @@
 # Peptide and Protein Sequencing by Multinomial Diffusion Model
 
-**Team**: Akshay Mohan Revankar, Sanika Nanjan, Vaishak Girish Kumar
+**Team**: CSE 676 Deep Learning Group Project
 **GitHub**: https://github.com/AkshayRevankarDev/peptide-diffusion
 
 ## Description

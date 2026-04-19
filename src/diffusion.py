@@ -1,5 +1,5 @@
 """
-src/diffusion.py  —  Vaishak
+src/diffusion.py
 V-1 (Base):    TransformerDenoiser
 V-2 (NOVEL#1): Entropy-adaptive mass gate + gate_confidence export
 V-3 (NOVEL#4): Spectral noise augmentation during training
@@ -400,13 +400,16 @@ def generate_sequences(encoder, denoiser, spectra, precursor_masses,
             logits_0_gated = logits_0
             gc = torch.ones(N, SEQ_LEN, device=device)  # ablation: gate disabled
 
-        # Spectral log-prob over gated logits (used by Akshay's ensemble)
-        log_fin = F.log_softmax(logits_0_gated, dim=-1)
-        sp_lp   = log_fin.gather(-1, x0_hat.unsqueeze(-1)).squeeze(-1)
-        aa_mask = (x0_hat >= 3).float()
-        sp_lp   = (sp_lp * aa_mask).sum(-1) / aa_mask.sum(-1).clamp(min=1)
+        # Use gated argmax as the final sequence — ensures mass consistency.
+        # Score = log-prob of the gated argmax under the gated distribution
+        # (argmax always has the highest log-prob, so this is always finite).
+        x0_final = logits_0_gated.argmax(-1)                            # (N, L)
+        log_fin  = F.log_softmax(logits_0_gated, dim=-1)
+        sp_lp    = log_fin.gather(-1, x0_final.unsqueeze(-1)).squeeze(-1)
+        aa_mask  = (x0_final >= 3).float()
+        sp_lp    = (sp_lp * aa_mask).sum(-1) / aa_mask.sum(-1).clamp(min=1)
 
-        for i, seq in enumerate(x0_hat.cpu().numpy()):
+        for i, seq in enumerate(x0_final.cpu().numpy()):
             sequences[i].append(decode_tokens(seq))
             spectral_lps[i].append(float(sp_lp[i].cpu()))
             gate_confs[i].append(float(gc[i].mean().cpu()))
