@@ -42,10 +42,10 @@ fragment spectra without a reference proteome. This is necessary for metaproteom
 samples such as wastewater, where many microbial taxa lack sequenced genomes and
 database search is not applicable.
 
-Existing tools---DeepNovo~\citep{tran2017}, Casanovo, InstaNovo~\citep{instanovo}---
-treat sequencing as autoregressive generation over a fixed vocabulary. A shared
-weakness is that mass constraints are applied only at decoding time or as a
-post-filter, not integrated into the generative process itself.
+Existing tools---DeepNovo~\cite{deepnovo}, Casanovo~\cite{casanovo},
+InstaNovo~\cite{instanovo}---treat sequencing as autoregressive generation over a
+fixed vocabulary. A shared weakness is that mass constraints are applied only at
+decoding time or as a post-filter, not integrated into the generative process itself.
 
 Our approach formulates sequencing as \textbf{discrete denoising diffusion}: the
 model iteratively recovers a clean amino acid sequence from categorical noise,
@@ -112,8 +112,8 @@ precursor mass. If all amino acids are masked, tolerance relaxes to 0.1~Da.
 PAD/SOS/EOS always pass. Gate confidence (fraction of positions where the
 tight 0.02~Da gate held) is recorded per spectrum.
 
-Neither InstaNovo+ nor $\pi$-PrimeNovo couples per-position generation uncertainty
-to mass constraint tolerance in this way.
+Neither InstaNovo+~\cite{instanovo} nor $\pi$-PrimeNovo~\cite{primenovo} couples
+per-position generation uncertainty to mass constraint tolerance in this way.
 
 \subsection{Spectral Noise Augmentation (V-3)}
 
@@ -129,8 +129,8 @@ environmental acquisitions. Augmentation is skipped at inference.
 
 \subsection{ESM-2 Pseudo-Perplexity Scoring}
 
-ESM-2 (8M, \texttt{esm2\_t6\_8M\_UR50D}~\citep{esm2}) scores each predicted
-sequence for biological plausibility using the one-fell-swoop method~\citep{kantroo2024}:
+ESM-2 (8M, \texttt{esm2\_t6\_8M\_UR50D}~\cite{esm2}) scores each predicted
+sequence for biological plausibility using the one-fell-swoop method~\cite{ofs}:
 all positions are masked in one forward pass,
 \begin{equation}
   \mathrm{PPL}(\mathbf{x}) = \exp\!\left(
@@ -330,8 +330,10 @@ the gated variant is the operationally correct comparison point.
 \paragraph{Ensemble failure mode.}
 The ensemble was expected to benefit from model diversity. In practice, LSTM and GRU
 both collapse to repetitive high-frequency residue predictions on longer sequences,
-so their candidates are correlated rather than complementary. A better ensemble
-would require a third model with structurally different failure modes.
+so their candidates are correlated rather than complementary. NovoBench~\cite{novobench}
+showed that no single model dominates across all evaluation conditions; effective
+ensembles require models with structurally distinct failure modes, which LSTM and GRU
+do not provide.
 
 \paragraph{Wastewater coverage.}
 Six identifications at 5\% FDR is a low yield for four mzML files. The model was
@@ -341,32 +343,26 @@ reduces but does not eliminate this gap.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \bibliographystyle{unsrt}
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
+\small
 
-\bibitem{instanovo}
-Eloff, J.~N. et al.
-\emph{De novo peptide sequencing with InstaNovo}.
-arXiv:2408.08968, 2024.
+\bibitem{deepnovo} Tran N, Zhang A, Xin L, et al. De novo peptide sequencing by deep learning. \textit{PNAS} 114(31), 2017.
 
-\bibitem{tran2017}
-Tran, N.~H. et al.
-\emph{De novo peptide sequencing by deep learning}.
-PNAS, 114(31):8247--8252, 2017.
+\bibitem{casanovo} Yilmaz M, Fondrie W, Bittremieux W, et al. De novo mass spectrometry peptide sequencing with a transformer model. \textit{Nat.~Commun.}, 2024.
 
-\bibitem{austin2021}
-Austin, J. et al.
-\emph{Structured denoising diffusion models in discrete state-spaces}.
-NeurIPS, 2021.
+\bibitem{instanovo} Eloff K, Kalogeropoulos K, Mabona A, et al. InstaNovo enables diffusion-powered de novo peptide sequencing in large-scale proteomics experiments. \textit{Nat.~Mach.~Intell.}~7, 565--579, 2025.
 
-\bibitem{esm2}
-Lin, Z. et al.
-\emph{Evolutionary-scale prediction of atomic-level protein structure with a language model}.
-Science, 379(6637):1123--1130, 2023.
+\bibitem{primenovo} Zhang X, et al. $\pi$-PrimeNovo: an accurate and efficient non-autoregressive deep network for de novo peptide sequencing. \textit{Nat.~Commun.}~16, 267, 2025.
 
-\bibitem{kantroo2024}
-Kantroo, M. et al.
-\emph{Pseudo-perplexity in one fell swoop for protein language models}.
-bioRxiv, 2024.
+\bibitem{ranknovo} Qiu Z, et al. RankNovo: universal biological sequence reranking for de novo peptide sequencing. \textit{ICML}, 2025.
+
+\bibitem{d3pm} Austin J, Johnson D, Ho J, et al. Structured denoising diffusion models in discrete state-spaces. \textit{NeurIPS}, 2021.
+
+\bibitem{esm2} Lin Z, Akin H, Rao R, et al. Evolutionary-scale prediction of atomic-level protein structure with a language model. \textit{Science} 379, 2023.
+
+\bibitem{ofs} Kantroo M, Tauber J, Bhatt D. Pseudo-perplexity in one fell swoop for protein fitness estimation. \textit{PRX Life}, 2024.
+
+\bibitem{novobench} Zhou J, et al. NovoBench: benchmarking de novo sequencing methods in proteomics. \textit{NeurIPS}, 2024.
 
 \end{thebibliography}
 
