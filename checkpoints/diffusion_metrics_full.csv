@@ -1,0 +1,10 @@
+Model,AA Recall %,Pep Acc %
+LSTM Baseline,31.51,2.68
+GRU Ablation,44.3,6.7
+Diffusion (seed 0),71.58604694396385,12.5
+Diffusion (seed 1),68.64240903199008,12.288135593220339
+Diffusion (seed 2),72.08731547141245,15.04237288135593
+Diffusion mean ± std,70.77 ± 1.52,13.28 ± 1.25
+Diffusion (no gate),73.20188256098045,17.796610169491526
+Diffusion (gate ON),72.00734959689906,15.04237288135593
+InstaNovo (ref),72.9,33.1
