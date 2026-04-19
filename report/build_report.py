@@ -130,7 +130,7 @@ def build_pdf():
         S["subtitle"]
     ))
     story.append(Paragraph(
-        "Team: Akshay Mohan Revankar, Sanika Nanjan, Vaishak Girish Kumar",
+        "CSE 676 Deep Learning Group Project",
         S["team"]
     ))
     story.append(Paragraph(
@@ -452,23 +452,15 @@ def build_pdf():
     # ─────────────────────────────────────────────────────────────────────────
     # PAGE 8 — Individual Contributions + LLM Statement
     # ─────────────────────────────────────────────────────────────────────────
-    story.append(Paragraph("7. Individual Contributions", S["h1"]))
+    story.append(Paragraph("7. Group Contributions", S["h1"]))
     contribs = [
-        ("<b>Akshay Mohan Revankar:</b> Designed and implemented the full preprocessing pipeline "
-         "(src/preprocessing.py and src/data_loader.py), including mzML streaming, "
-         "scan-number-based label joining, peak filtering, m/z binning, and peptide encoding. "
-         "Configured the project repository structure, requirements.txt, and data path "
-         "abstraction across all notebooks."),
-        ("<b>Sanika Nanjan:</b> Led the Exploratory Data Analysis (notebooks/01_eda.ipynb), "
-         "producing all distribution plots (peaks per spectrum, precursor m/z, charge state, "
-         "peptide length, amino acid frequency), the 3 annotated example spectrum visualisations "
-         "with theoretical b/y ion overlays, and the database search score distribution. "
-         "Ensured all figures were saved to figures/eda/ with consistent styling."),
-        ("<b>Vaishak Girish Kumar:</b> Designed and trained the PyTorch encoder-decoder "
-         "architecture (src/baseline.py and notebooks/03_baseline.ipynb), including the LSTM "
-         "decoder, GRU ablation study, evaluate_test() evaluation function, confusion matrix "
-         "generation, and AA recall-by-length error analysis. Authored the analytical sections "
-         "of this report and compiled the final PDF."),
+        ("The team collectively designed and implemented all components of this checkpoint. "
+         "The preprocessing pipeline (src/preprocessing.py and src/data_loader.py) covers mzML "
+         "streaming, scan-number-based label joining, peak filtering, m/z binning, and peptide "
+         "encoding. The Exploratory Data Analysis (notebooks/01_eda.ipynb) produced all "
+         "distribution plots and annotated spectrum visualisations. The PyTorch encoder-decoder "
+         "architecture (src/baseline.py and notebooks/03_baseline.ipynb) includes the LSTM "
+         "decoder, GRU ablation study, and full evaluation suite."),
     ]
     for c in contribs:
         story.append(Paragraph(c, S["body"]))
@@ -520,7 +512,7 @@ def build_pdf():
         leftMargin=1*inch, rightMargin=1*inch,
         topMargin=1*inch, bottomMargin=1*inch,
         title="CSE 676 Checkpoint 1 Report — Peptide Diffusion",
-        author="Akshay Mohan Revankar, Sanika Nanjan, Vaishak Girish Kumar",
+        author="CSE 676 Deep Learning Group Project",
         subject="De Novo Peptide Sequencing by Multinomial Diffusion Model",
     )
     doc.build(story, canvasmaker=NumberedCanvas)

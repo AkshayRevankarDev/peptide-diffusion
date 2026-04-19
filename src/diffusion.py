@@ -1,5 +1,5 @@
 """
-src/diffusion.py  —  Vaishak
+src/diffusion.py
 V-1 (Base):    TransformerDenoiser
 V-2 (NOVEL#1): Entropy-adaptive mass gate + gate_confidence export
 V-3 (NOVEL#4): Spectral noise augmentation during training
@@ -400,7 +400,7 @@ def generate_sequences(encoder, denoiser, spectra, precursor_masses,
             logits_0_gated = logits_0
             gc = torch.ones(N, SEQ_LEN, device=device)  # ablation: gate disabled
 
-        # Spectral log-prob over gated logits (used by Akshay's ensemble)
+        # Spectral log-prob over gated logits (used by ensemble.py)
         log_fin = F.log_softmax(logits_0_gated, dim=-1)
         sp_lp   = log_fin.gather(-1, x0_hat.unsqueeze(-1)).squeeze(-1)
         aa_mask = (x0_hat >= 3).float()
