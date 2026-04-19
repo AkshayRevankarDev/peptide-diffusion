@@ -277,9 +277,9 @@ def train_diffusion(mzml_paths, xlsx_paths, checkpoint_dir='checkpoints',
     te = idx[n_tr + n_va:]
 
     train_dl = DataLoader(DiffusionDataset(X[tr], y[tr], masses[tr]),
-                          batch_size=batch_size, shuffle=True)
+                          batch_size=batch_size, shuffle=True, drop_last=True)
     val_dl   = DataLoader(DiffusionDataset(X[va], y[va], masses[va]),
-                          batch_size=batch_size)
+                          batch_size=batch_size, drop_last=True)
 
     encoder  = Encoder().to(device)
     denoiser = TransformerDenoiser().to(device)
