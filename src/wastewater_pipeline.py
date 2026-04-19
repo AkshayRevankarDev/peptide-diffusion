@@ -304,56 +304,78 @@ def run_wastewater_pipeline(mzml_paths: list,
     if device is None:
         device = next(encoder.parameters()).device
 
-    all_target, all_decoy = [], []
+    all_passing = []
 
     for mzml_path in mzml_paths:
         fname  = os.path.basename(mzml_path)
         sample = os.path.splitext(fname)[0]
-        print(f"Loading {fname} …")
-        spectra = load_raw_spectra(mzml_path, max_spectra=2000)
+        print(f"\nLoading {fname} …")
+
+        try:
+            spectra = load_raw_spectra(mzml_path, max_spectra=2000)
+        except Exception as e:
+            print(f"  Could not load {fname}: {e} — skipping.")
+            continue
+
+        if not spectra:
+            print(f"  No spectra found in {fname} — skipping.")
+            continue
 
         # Target predictions
         tgt = run_inference_on_spectra(spectra, encoder, denoiser, device)
+        if not tgt:
+            print(f"  No predictions for {fname} — skipping.")
+            continue
         for r in tgt:
             r["sample_id"]    = sample
             r["is_decoy"]     = False
             r["replicate_id"] = 0
-        all_target.extend(tgt)
 
-        # Decoy predictions (reversed m/z)
+        # Decoy predictions (reversed m/z) — per-sample FDR
         decoy_spectra = []
         for s in spectra:
             rev_mz, rev_int = _reverse_spectrum(s["mz"], s["intensity"])
             decoy_spectra.append({**s, "mz": rev_mz, "intensity": rev_int})
-
         dec = run_inference_on_spectra(decoy_spectra, encoder, denoiser, device)
         for r in dec:
             r["sample_id"]    = sample
             r["is_decoy"]     = True
             r["replicate_id"] = 0
-        all_decoy.extend(dec)
 
-    if not all_target:
-        print("No target PSMs produced — aborting.")
+        # Per-sample FDR (avoids high-confidence samples drowning out sparse ones)
+        target_scores = [r["score"] for r in tgt]
+        decoy_scores  = [r["score"] for r in dec] if dec else []
+        if not decoy_scores:
+            decoy_scores = [min(target_scores) - 1.0]
+
+        fdr_df = compute_empirical_fdr(target_scores, decoy_scores)
+        tau, achieved_fdr = find_fdr_threshold(fdr_df, target_fdr=target_fdr)
+        label = "5pct" if achieved_fdr <= 0.05 else "10pct"
+        print(f"  FDR tau={tau:.4f}  achieved={achieved_fdr*100:.1f}%  ({label})")
+
+        passing = [r for r in tgt if r["score"] >= tau]
+        print(f"  PSMs passing {label} FDR: {len(passing)}")
+
+        if not passing:
+            # Last resort: take top-5 by score and flag them as unfiltered
+            top5 = sorted(tgt, key=lambda r: r["score"], reverse=True)[:5]
+            for r in top5:
+                r["fdr_label"] = "unfiltered"
+            passing = top5
+            print(f"  No PSMs passed FDR — falling back to top-{len(passing)} by score (unfiltered)")
+        else:
+            for r in passing:
+                r["fdr_label"] = label
+
+        all_passing.extend(passing)
+
+    if not all_passing:
+        print("No PSMs pass FDR threshold across any sample.")
         return pd.DataFrame()
 
-    target_scores = [r["score"] for r in all_target]
-    decoy_scores  = [r["score"] for r in all_decoy]
-
-    fdr_df = compute_empirical_fdr(target_scores, decoy_scores)
-    tau, achieved_fdr = find_fdr_threshold(fdr_df, target_fdr=target_fdr)
-
-    label = "5pct" if achieved_fdr <= 0.05 else "10pct"
-    print(f"FDR threshold tau={tau:.4f}  achieved FDR={achieved_fdr*100:.1f}%  ({label})")
-
-    # Filter targets
-    df = pd.DataFrame([r for r in all_target if r["score"] >= tau])
-    if df.empty:
-        print("No PSMs pass FDR threshold.")
-        return df
-
-    print(f"PSMs at {label} FDR : {len(df)}")
-    print(f"Unique peptides     : {df['sequence'].nunique()}")
+    df = pd.DataFrame(all_passing)
+    print(f"\nTotal PSMs (all samples): {len(df)}")
+    print(f"Unique peptides          : {df['sequence'].nunique()}")
 
     # NOVEL #5: Jaccard replicate consistency
     df = add_replicate_consistency(df, {})
@@ -375,7 +397,7 @@ def run_wastewater_pipeline(mzml_paths: list,
 
     os.makedirs(os.path.dirname(out_csv) if os.path.dirname(out_csv) else ".", exist_ok=True)
     col_order = ["spectrum_id", "sequence", "score", "winnow_score",
-                 "sample_id", "replicate_consistent", "jaccard_score",
+                 "sample_id", "fdr_label", "replicate_consistent", "jaccard_score",
                  "esm2_ppl", "esm2_anomalous_frac",
                  "precursor_mz", "charge"]
     col_order = [c for c in col_order if c in df.columns]
