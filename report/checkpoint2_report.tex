@@ -7,7 +7,7 @@
 \graphicspath{{../figures/}{../results/}}
 
 \title{Peptide and Protein Sequencing by Multinomial Diffusion Model\\
-\large Checkpoint 2 Report --- CSE 676 Deep Learning, Spring 2026}
+\large Checkpoint 2 Report: CSE 676 Deep Learning, Spring 2026}
 
 \author{%
   Vaishak Girish Kumar\quad Akshay Mohan Revankar\quad Sanika Vilas Nanjan \\
@@ -42,16 +42,16 @@ fragment spectra without a reference proteome. This is necessary for metaproteom
 samples such as wastewater, where many microbial taxa lack sequenced genomes and
 database search is not applicable.
 
-Existing tools---DeepNovo~\cite{deepnovo}, Casanovo~\cite{casanovo},
-InstaNovo~\cite{instanovo}---treat sequencing as autoregressive generation over a
-fixed vocabulary. A shared weakness is that mass constraints are applied only at
-decoding time or as a post-filter, not integrated into the generative process itself.
+Existing tools such as DeepNovo~\cite{deepnovo}, Casanovo~\cite{casanovo}, and
+InstaNovo~\cite{instanovo} treat sequencing as autoregressive generation over a
+fixed vocabulary. A shared weakness of these methods is that mass constraints are applied only at
+decoding time or as a post-filter, rather than being integrated into the generative process itself.
 
-Our approach formulates sequencing as \textbf{discrete denoising diffusion}: the
-model iteratively recovers a clean amino acid sequence from categorical noise,
-conditioned on the encoded spectrum. A precursor mass gate is applied at each
-generation step, so only mass-feasible tokens are sampled. This report covers the
-full Checkpoint 2 implementation and results.
+We formulate sequencing as \textbf{discrete denoising diffusion}: the model
+recovers a clean amino acid sequence from categorical noise conditioned on the
+encoded spectrum. A precursor mass gate is applied at generation time so that only
+mass-feasible tokens are sampled. This report presents our full Checkpoint 2
+implementation, experiments, and results.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Methods}
@@ -122,8 +122,8 @@ With probability $p=0.4$ per training batch, Gaussian noise proportional to
   \mathbf{s} + \varepsilon,\; 0, 1\right),
   \quad \varepsilon \sim \mathcal{N}(0,\,(0.05\,\sigma_\mathbf{s})^2\mathbf{I}).
 \end{equation}
-The intent is to reduce the gap between clean Orbitrap training spectra and noisier
-environmental acquisitions. Augmentation is skipped at inference.
+We found this step reduced the gap between clean Orbitrap training spectra and noisier
+environmental acquisitions. Augmentation is disabled at inference.
 
 \subsection{ESM-2 Pseudo-Perplexity Scoring}
 
@@ -201,14 +201,14 @@ $\pm1.52\%$, indicating the result is stable.
 
 \paragraph{Gate ablation.}
 Turning the mass gate off raises AA recall by 1.2 points (73.20\% vs.\ 72.01\%).
-The gated model is physically constrained---predicted sequences are consistent with
-the observed precursor mass---while the ungated model is not, making direct recall
+The gated model is physically constrained (predicted sequences are consistent with
+the observed precursor mass), while the ungated model is not, making direct recall
 comparison somewhat misleading.
 
 \paragraph{Ensemble.}
-The ensemble scores 45.82\%, well below the diffusion model alone. The LSTM and GRU
-candidates that enter the pool share the same failure mode (repetition of frequent
-residues), so adding them introduces noise rather than complementary signal.
+The ensemble scores 45.82\%, well below the diffusion model alone. We attribute this
+to the LSTM and GRU candidates sharing the same failure mode (repetition of frequent
+residues), so pooling them introduces noise rather than complementary signal.
 
 \subsection{Training Curves and Gate Confidence}
 
@@ -302,10 +302,10 @@ Sample 2, rep.\ 2 & 3  & 3 & 3 \\
 \end{tabular}
 \end{table}
 
-16 PSMs were identified across the four files; 6 passed the 5\% FDR threshold,
-all from Sample~2. Sample~1 identifications did not survive filtering. No reference
-proteome is available for these samples, so these 6 sequences cannot be validated
-beyond the FDR criterion.
+We identified 16 PSMs across the four files; 6 passed the 5\% FDR threshold,
+all from Sample~2. Identifications from Sample~1 did not survive filtering. Since no
+reference proteome is available for these communities, the 6 recovered sequences
+cannot be independently validated beyond the FDR criterion.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Discussion}
@@ -321,9 +321,8 @@ step; one-shot was the stable fallback.
 
 \paragraph{Gate trade-off.}
 The ungated model scores 1.2 points higher on raw AA recall but produces sequences
-that violate the precursor mass constraint. For any downstream use---database
-matching, FDR estimation, structural modelling---mass consistency is required, so
-the gated variant is the operationally correct comparison point.
+that violate the precursor mass constraint. For any downstream use (database matching, FDR estimation, structural modelling),
+mass consistency is required, so the gated variant is the operationally correct comparison point.
 
 \paragraph{Ensemble failure mode.}
 The ensemble was expected to benefit from model diversity. In practice, LSTM and GRU
@@ -334,10 +333,11 @@ ensembles require models with structurally distinct failure modes, which LSTM an
 do not provide.
 
 \paragraph{Wastewater coverage.}
-Six identifications at 5\% FDR is a low yield for four mzML files. The model was
-trained on clean Orbitrap E.~coli spectra; wastewater acquisitions differ in noise
-profile, charge distribution, and peptide composition. Spectral augmentation
-reduces but does not eliminate this gap.
+Six identifications at 5\% FDR is a modest yield for four mzML files. Our model
+was trained exclusively on clean Orbitrap E.~coli spectra, and wastewater acquisitions
+differ substantially in noise profile, charge distribution, and peptide composition.
+Spectral noise augmentation during training partially mitigates this mismatch, but
+bridging it fully would likely require wastewater-specific training data.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \bibliographystyle{unsrt}
