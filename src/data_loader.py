@@ -2,7 +2,10 @@ from pyteomics import mzml
 import numpy as np
 
 # Re-export key functions from preprocessing
-from .preprocessing import load_labeled_spectra, build_dataset
+try:
+    from .preprocessing import load_labeled_spectra, build_dataset
+except ImportError:
+    from preprocessing import load_labeled_spectra, build_dataset
 
 def load_raw_spectra(mzml_path, max_spectra=5000):
     """
@@ -15,6 +18,9 @@ def load_raw_spectra(mzml_path, max_spectra=5000):
     count = 0
     with mzml.read(mzml_path) as reader:
         for spectrum in reader:
+            # Only process MS2 fragmentation spectra (skip MS1 survey scans)
+            if spectrum.get('ms level', 1) != 2:
+                continue
             scan_match = re.search(r'scan=(\d+)', spectrum.get('id', ''))
             if not scan_match:
                 continue

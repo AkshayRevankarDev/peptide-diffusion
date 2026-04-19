@@ -63,9 +63,12 @@ def run_inference_on_spectra(spectra: list, encoder, denoiser,
     X      = np.array(X)
     masses = np.array(masses, dtype=np.float32)
 
+    # Disable the entropy-adaptive mass gate for wastewater inference:
+    # the gate is calibrated on E. coli EV training spectra and rejects
+    # all amino-acid tokens on out-of-distribution wastewater spectra.
     seqs_list, lps_list, gcs_list = generate_sequences(
         encoder, denoiser, X, masses,
-        n_candidates=1, device=device, use_gate=True
+        n_candidates=1, device=device, use_gate=False
     )
 
     results = []
@@ -344,7 +347,7 @@ def run_wastewater_pipeline(mzml_paths: list,
     print(f"FDR threshold tau={tau:.4f}  achieved FDR={achieved_fdr*100:.1f}%  ({label})")
 
     # Filter targets
-    df = pd.DataFrame([r for r in all_target if r["score"] > tau])
+    df = pd.DataFrame([r for r in all_target if r["score"] >= tau])
     if df.empty:
         print("No PSMs pass FDR threshold.")
         return df
