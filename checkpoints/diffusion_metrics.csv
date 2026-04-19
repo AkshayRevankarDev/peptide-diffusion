@@ -1,0 +1,5 @@
+Model,AA Recall %,Pep Acc %
+LSTM Baseline,31.51,2.68
+GRU Ablation,44.3,6.7
+Diffusion (CP2),73.4358851187325,19.279661016949152
+InstaNovo (ref),72.9,33.1

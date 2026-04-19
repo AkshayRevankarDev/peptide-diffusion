@@ -1,0 +1,262 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{parskip}
+\usepackage{hyperref}
+\usepackage{verbatim}
+\usepackage{titlesec}
+
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue}
+
+\title{\textbf{CP2 Team Plan}\\
+\large CSE 676 Deep Learning --- Checkpoint 2\\
+\normalsize Due: April 19, 2026}
+\author{
+  Vaishak Girish Kumar \texttt{(vaishakg@buffalo.edu)}\\
+  Akshay Mohan Revankar \texttt{(arevanka@buffalo.edu)}\\
+  Sanika Vilas Nanjan \texttt{(snajan@buffalo.edu)}
+}
+\date{April 18, 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────────────────────
+\section{Project Summary}
+
+CP2 extends our CP1 LSTM/GRU baselines (31.51\% and 44.30\% AA recall) with four deliverables:
+(1) a multinomial diffusion model with precursor mass constraints baked into every reverse step,
+(2) ESM-2 pseudo-perplexity scoring to filter biologically implausible predictions,
+(3) a multi-model ensemble combining the diffusion model with the CP1 baselines,
+and (4) FDR-controlled de novo predictions on the wastewater samples.
+All code lives on branch \texttt{akshay/cp2-diffusion} of the shared repo.
+
+% ─────────────────────────────────────────────────────────────
+\section{Task Assignments}
+
+\begin{center}
+\begin{tabular}{p{2.2cm} p{5cm} p{4.5cm}}
+\toprule
+\textbf{Owner} & \textbf{Task} & \textbf{Deliverable} \\
+\midrule
+Vaishak &
+  \texttt{src/diffusion.py}: TransformerDenoiser, forward/reverse process, mass gate, training loop &
+  Checkpoint file + loss curves \\
+\addlinespace
+Vaishak &
+  \texttt{notebooks/04\_diffusion.ipynb}: end-to-end training \& eval notebook &
+  Notebook with printed metrics \\
+\addlinespace
+Sanika &
+  \texttt{src/esm\_scoring.py}: ESM-2 pseudo-perplexity scorer (8M model, one-fell-swoop method) &
+  \texttt{Results/esm2\_scores.csv} + violin plot \\
+\addlinespace
+Sanika &
+  \texttt{src/wastewater\_pipeline.py}: target-decoy FDR pipeline on wastewater mzML &
+  \texttt{Results/wastewater\_predictions\_5pct\_fdr.csv} \\
+\addlinespace
+Akshay &
+  \texttt{src/ensemble.py}: consensus scoring across diffusion + LSTM + GRU candidates &
+  AA recall table in report \\
+\addlinespace
+Akshay &
+  \texttt{checkpoint2\_report.tex}: full CP2 LaTeX report with updated results &
+  \texttt{checkpoint2\_report.pdf} \\
+\addlinespace
+Akshay &
+  Review \& merge \texttt{akshay/cp2-diffusion} into \texttt{main} &
+  Clean repo, all tests pass \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────────────────────────────────────────
+\section{Architecture Notes (Vaishak --- \texttt{src/diffusion.py})}
+
+\subsection*{Reuse from CP1}
+\begin{itemize}
+  \item \textbf{Encoder}: reuse \texttt{Encoder} from \texttt{src/baseline.py} unchanged.
+    MLP: $20000 \rightarrow 1024 \rightarrow 512 \rightarrow 256$, ReLU + Dropout(0.3).
+    Outputs a 256-dim spectrum context vector \textbf{s}.
+  \item \textbf{PeptideDataset}: same class, same 70/15/15 split (1041/223/224 spectra).
+  \item \textbf{build\_dataset}: same pipeline from \texttt{src/preprocessing.py}.
+\end{itemize}
+
+\subsection*{TransformerDenoiser (new)}
+\begin{itemize}
+  \item Input: noisy token sequence $x_t$ (shape $B \times 32$), timestep $t$, context \textbf{s} ($B \times 256$).
+  \item Timestep embedding: sinusoidal $\rightarrow$ linear $\rightarrow$ 256-dim.
+  \item Token embedding: \texttt{nn.Embedding(23, 256)}.
+  \item 4$\times$ \texttt{TransformerDecoderLayer}(d\_model=256, nhead=8, dim\_feedforward=512),
+    cross-attending to \textbf{s} (unsqueezed to $B \times 1 \times 256$).
+  \item Output: logits $(B, 32, 23)$ --- predicts clean $x_0$ directly.
+\end{itemize}
+
+\subsection*{Forward Process (categorical noise)}
+\begin{itemize}
+  \item $T = 200$ timesteps; linear schedule $\beta_1 = 0.001$, $\beta_T = 0.02$.
+  \item $\bar{\alpha}_t = \prod_{i=1}^{t}(1 - \beta_i)$.
+  \item $q(x_t \mid x_0)$: keep $x_0$ with probability $\bar{\alpha}_t$, else sample Uniform(23).
+\end{itemize}
+
+\subsection*{Mass Constraint Gate (novel contribution)}
+At each reverse step $t \rightarrow t{-}1$, before sampling:
+\begin{enumerate}
+  \item For each position $i$ and candidate token $a$, compute candidate partial mass.
+  \item Using monoisotopic residue masses and precursor $M_\text{precursor}$ from the mzML:
+    \[ \left|\sum_{i=1}^{L} m(a_i) - M_\text{precursor}\right| < 0.02\;\text{Da} \]
+  \item Zero out token assignments that cannot possibly satisfy this constraint
+    given minimum/maximum masses for remaining positions.
+  \item Renormalize and sample. This runs at \textit{every} reverse step, not only at final decoding.
+\end{enumerate}
+Tolerance: start with 0.02 Da; relax to 0.1 Da if the gate zeros all candidates.
+
+\subsection*{Training}
+\begin{itemize}
+  \item Loss: cross-entropy on clean $x_0$ prediction, label\_smoothing=0.1.
+  \item Optimizer: Adam, lr=$10^{-3}$, gradient clip 1.0.
+  \item 50 epochs, batch size 32.
+  \item Save checkpoint every 10 epochs to \texttt{checkpoints/diffusion\_ckpt\_{epoch}.pt}.
+  \item If CPU training is too slow: reduce $T = 50$, or use Colab T4 (free GPU).
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────
+\section{ESM-2 Plan (Sanika --- \texttt{src/esm\_scoring.py})}
+
+\begin{itemize}
+  \item \textbf{Model}: \texttt{facebook/esm2\_t6\_8M\_UR50D} (8M params, $\sim$60 MB, CPU-friendly).
+    Install: \texttt{pip install transformers}.
+  \item \textbf{Method}: one-fell-swoop pseudo-perplexity (Kantroo 2024).
+    Mask \textit{all} positions simultaneously $\rightarrow$ single forward pass.
+    \[ \text{PPL}(\mathbf{x}) = \exp\!\left(-\frac{1}{L}\sum_{i=1}^{L}\log p_\theta(x_i \mid \mathbf{x}_{\backslash i})\right) \]
+    Lower PPL = more biologically natural.
+  \item \textbf{Apply to}:
+    \begin{itemize}
+      \item Diffusion model predictions on test set (224 spectra)
+      \item LSTM and GRU predictions on same test set
+      \item Ground truth sequences (sanity check --- should have lowest PPL)
+      \item Length-matched random sequences (should have highest PPL)
+    \end{itemize}
+  \item \textbf{Edge case}: filter predictions $< 5$ residues before scoring; pad to minimum ESM-2 length.
+  \item \textbf{Output}: \texttt{Results/esm2\_scores.csv} with columns
+    \texttt{[sequence, ppl, model, is\_correct]}.
+  \item \textbf{Figure}: violin/box plot comparing PPL distributions across the four groups.
+\end{itemize}
+
+\subsection*{Wastewater Pipeline (\texttt{src/wastewater\_pipeline.py})}
+\begin{enumerate}
+  \item Load all four wastewater mzML files via \texttt{data\_loader.load\_raw\_spectra} (no labels).
+  \item Preprocess each spectrum via \texttt{preprocessing.preprocess\_spectrum}.
+  \item Run diffusion model inference $\rightarrow$ raw predictions CSV.
+  \item \textbf{Target-decoy FDR}: reverse each spectrum's $m/z$ array (decoy), run same inference.
+    Empirical FDR at threshold $\tau$:
+    \[ \text{FDR}(\tau) = \frac{|\text{decoy PSMs with score} > \tau|}{|\text{target PSMs with score} > \tau|} \]
+    Find $\tau$ where FDR $\leq 5\%$.
+  \item Save: \texttt{Results/wastewater\_predictions\_5pct\_fdr.csv}.
+  \item Report: total PSMs, unique peptides, PSMs at 5\% FDR (qualitative only, no ground truth).
+\end{enumerate}
+
+% ─────────────────────────────────────────────────────────────
+\section{Ensemble Plan (Akshay --- \texttt{src/ensemble.py})}
+
+\begin{itemize}
+  \item For each of the 224 test spectra, collect:
+    \begin{itemize}
+      \item Top-5 candidates from diffusion model (temperature sampling, $T_\text{sample} = 0.8$)
+      \item Top-1 from LSTM baseline
+      \item Top-1 from GRU ablation
+    \end{itemize}
+  \item Score each unique candidate:
+    \[ \text{score}(c) = \log p_\text{spectral}(c) - \lambda \cdot \log(\text{PPL}_\text{ESM2}(c)) \]
+    where $\lambda = 0.1$ (tune on val set).
+  \item Pick $\arg\max$ score as the ensemble prediction.
+  \item \textbf{Metrics}: AA recall and peptide accuracy of ensemble vs.\ each individual model.
+  \item Expected output table in the report:
+\end{itemize}
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Model} & \textbf{AA Recall (\%)} & \textbf{Pep.\ Acc.\ (\%)} \\
+\midrule
+LSTM Baseline  & 31.51 & 2.68 \\
+GRU Ablation   & 44.30 & 6.70 \\
+Diffusion (CP2) & TBD  & TBD  \\
+Ensemble        & TBD  & TBD  \\
+InstaNovo (ref) & 72.9 & 33.1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────────────────────────────────────────
+\section{Risks \& Mitigations}
+
+\begin{center}
+\begin{tabular}{p{3.5cm} p{1.8cm} p{6cm}}
+\toprule
+\textbf{Risk} & \textbf{Owner} & \textbf{Mitigation} \\
+\midrule
+Diffusion training too slow on CPU &
+  Akshay &
+  Reduce $T = 50$ timesteps; use Colab T4 (free GPU) \\
+\addlinespace
+Mass gate zeros all candidates &
+  Akshay &
+  Relax tolerance from 0.02 Da $\rightarrow$ 0.1 Da; apply gate only on final 20 steps \\
+\addlinespace
+ESM-2 rejects peptides $< 5$ AA &
+  Sanika &
+  Pre-filter predictions; pad sequence to min length 5 \\
+\addlinespace
+InstaNovo centroiding failure on profile mzML &
+  Sanika &
+  Skip InstaNovo in ensemble; use LSTM+GRU+Diffusion only \\
+\addlinespace
+Wastewater FDR never reaches $5\%$ cutoff &
+  Sanika &
+  Report at $10\%$ FDR instead; note limitation in report \\
+\addlinespace
+Diffusion recall lower than GRU (44.30\%) &
+  Vaishak &
+  Report honest result; focus discussion on mass constraint correctness, not just recall \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────────────────────────────────────────
+\section{Repo Structure}
+
+\begin{verbatim}
+peptide-diffusion/                  <- branch: akshay/cp2-diffusion
+├── src/
+│   ├── preprocessing.py            <- Akshay (CP1, unchanged)
+│   ├── data_loader.py              <- Akshay (CP1, unchanged)
+│   ├── baseline.py                 <- Vaishak (CP1, unchanged)
+│   ├── diffusion.py                <- Vaishak (CP2, NEW)
+│   ├── esm_scoring.py              <- Sanika  (CP2, NEW)
+│   ├── ensemble.py                 <- Akshay  (CP2, NEW)
+│   └── wastewater_pipeline.py      <- Sanika  (CP2, NEW)
+├── notebooks/
+│   ├── 01_eda.ipynb
+│   ├── 02_preprocessing.ipynb
+│   ├── 03_baseline.ipynb
+│   └── 04_diffusion.ipynb          <- Akshay  (CP2, NEW)
+├── data/raw/                       <- gitignored; copy locally
+│   ├── Ecoli_EV_1.mzML
+│   ├── Ecoli_EV_2.mzML
+│   ├── Database search output_Ecoli_EV_1.xlsx
+│   ├── Database search output_Ecoli_EV_2.xlsx
+│   └── wastewater_Sample*.mzML (x4)
+├── checkpoints/
+│   └── diffusion_ckpt_*.pt
+├── Results/
+│   ├── esm2_scores.csv
+│   └── wastewater_predictions_5pct_fdr.csv
+├── cp2_team_plan.pdf               <- this document
+└── checkpoint2_report.pdf          <- final submission
+\end{verbatim}
+
+\end{document}
