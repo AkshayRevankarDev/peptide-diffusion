@@ -312,7 +312,7 @@ def train_diffusion(mzml_paths, xlsx_paths, checkpoint_dir='checkpoints',
         with torch.no_grad():
             for spec, seq, _ in val_dl:
                 spec, seq = spec.to(device), seq.to(device)
-                t      = torch.randint(0, T_STEPS, (B,), device=device)
+                t      = torch.randint(0, T_STEPS, (seq.shape[0],), device=device)
                 xt     = q_sample(seq, t)
                 logits = denoiser(xt, t, encoder(spec))
                 va_loss += criterion(logits.reshape(-1, VOCAB_SIZE),
