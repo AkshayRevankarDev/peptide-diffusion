@@ -1,6 +1,6 @@
 \documentclass[11pt]{article}
 \usepackage{neurips_2023}
-\usepackage{colortbl}   % rowcolor — loaded after xcolor from neurips_2023.sty
+\usepackage{colortbl}
 \usepackage{float}
 \usepackage[capitalize]{cleveref}
 
@@ -12,7 +12,7 @@
 \author{%
   Vaishak Girish Kumar\quad Akshay Mohan Revankar\quad Sanika Vilas Nanjan \\
   \texttt{\{vaishakg, arevanka, snajan\}@buffalo.edu} \\
-  CSE 676 Deep Learning --- University at Buffalo
+  University at Buffalo
 }
 
 \begin{document}
@@ -20,200 +20,197 @@
 \maketitle
 
 \begin{abstract}
-We present a multinomial diffusion model for \emph{de novo} peptide sequencing from
-tandem mass spectrometry (MS/MS) data. Starting from Checkpoint 1 LSTM/GRU baselines
-(31.51\%~/ 44.30\% amino acid recall), Checkpoint 2 introduces four contributions:
-(1)~a \textbf{TransformerDenoiser} that performs categorical diffusion over 23 amino
-acid tokens conditioned on spectrum context; (2)~an \textbf{entropy-adaptive mass gate}
-(Novel~\#1) that enforces precursor mass constraints with per-position tolerance scaled
-by denoising entropy; (3)~\textbf{spectral noise augmentation} (Novel~\#4) to improve
-generalisation to noisy wastewater spectra; and (4)~an \textbf{ESM-2 pseudo-perplexity}
-scorer and \textbf{multi-model ensemble} for post-hoc candidate reranking, plus a
-\textbf{target-decoy FDR pipeline} applied to unlabelled wastewater mzML files.
-The diffusion model achieves $70.77 \pm 1.52\%$ AA recall across three random seeds,
-approaching the InstaNovo reference (72.9\%) while surpassing both baselines by a
-large margin.
+This report describes Checkpoint 2 of our \emph{de novo} peptide sequencing project.
+Building on the Checkpoint 1 LSTM/GRU baselines (31.51\%/44.30\% amino acid recall),
+we trained a multinomial diffusion model over categorical amino acid tokens conditioned
+on binned MS/MS spectra. Four components are added: (1)~a \textbf{TransformerDenoiser}
+performing categorical reverse diffusion; (2)~an \textbf{entropy-adaptive mass gate}
+that enforces precursor mass constraints with per-position tolerance tied to denoising
+uncertainty; (3)~\textbf{spectral noise augmentation} during training for domain
+robustness; and (4)~an \textbf{ESM-2 pseudo-perplexity} scorer, a \textbf{multi-model
+ensemble}, and a \textbf{target-decoy FDR pipeline} for wastewater mzML.
+Across three seeds, the diffusion model achieves $70.77 \pm 1.52\%$ AA recall on the
+E.~coli EV test set, within 2.1 points of the InstaNovo reference (72.9\%).
 \end{abstract}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Introduction}
 % ─────────────────────────────────────────────────────────────────────────────
 
-\emph{De novo} peptide sequencing determines a peptide's amino acid sequence
-directly from its MS/MS fragmentation pattern, without a reference proteome.
-This is essential for complex metaproteomic samples --- such as wastewater --- where
-many organisms are unsequenced and database search is inapplicable.
+\emph{De novo} peptide sequencing recovers amino acid sequences directly from MS/MS
+fragment spectra without a reference proteome. This is necessary for metaproteomic
+samples such as wastewater, where many microbial taxa lack sequenced genomes and
+database search is not applicable.
 
-Current state-of-the-art tools (DeepNovo, Casanovo, InstaNovo) use transformer or LSTM
-architectures and treat sequencing as supervised autoregressive generation. While
-effective on well-characterised proteomes, they lack physical grounding: they do not
-enforce that predicted masses match the observed precursor ion.
+Existing tools---DeepNovo~\citep{tran2017}, Casanovo, InstaNovo~\citep{instanovo}---
+treat sequencing as autoregressive generation over a fixed vocabulary. A shared
+weakness is that mass constraints are applied only at decoding time or as a
+post-filter, not integrated into the generative process itself.
 
-We frame \emph{de novo} sequencing as \textbf{discrete denoising diffusion}: iteratively
-recovering a clean amino acid token sequence from corrupted noise, conditioned on the
-spectrum. Precursor mass constraints are incorporated at every reverse step via a novel
-entropy-adaptive gate, providing physically valid predictions. Checkpoint~2 delivers the
-full system, benchmarked against both our CP1 baselines and the InstaNovo reference.
+Our approach formulates sequencing as \textbf{discrete denoising diffusion}: the
+model iteratively recovers a clean amino acid sequence from categorical noise,
+conditioned on the encoded spectrum. A precursor mass gate is applied at each
+generation step, so only mass-feasible tokens are sampled. This report covers the
+full Checkpoint 2 implementation and results.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Methods}
 % ─────────────────────────────────────────────────────────────────────────────
 
-\subsection{Diffusion Model Architecture (V-1)}
+\subsection{Diffusion Model (V-1)}
 
 \paragraph{Encoder.}
-Reused from CP1 unchanged: a three-layer MLP
-($20{,}000 \to 1{,}024 \to 512 \to 256$) with ReLU activations and Dropout(0.3),
-compressing the 20,000-dim binned spectrum into a 256-dim context vector~$\mathbf{s}$.
+Reused from CP1: a three-layer MLP ($20{,}000 \to 1{,}024 \to 512 \to 256$) with
+ReLU and Dropout(0.3), mapping binned spectra to a 256-dim context vector~$\mathbf{s}$.
 
 \paragraph{TransformerDenoiser.}
-The denoiser predicts clean $x_0$ directly from noisy input $x_t$, timestep $t$,
-and context $\mathbf{s}$:
+Given noisy tokens $x_t$, timestep $t$, and context $\mathbf{s}$, the denoiser
+predicts the clean sequence $x_0$ in a single forward pass:
 \begin{itemize}[nosep]
-  \item \textbf{Token embedding:} \texttt{nn.Embedding(23, 256)} + learned positional embedding.
-  \item \textbf{Timestep embedding:} sinusoidal $\to$ Linear $\to$ 256-dim, added to all positions.
+  \item \textbf{Input:} token embedding \texttt{nn.Embedding(23, 256)} plus learned
+    positional embedding; sinusoidal timestep embedding added to all positions.
   \item \textbf{Decoder stack:} $4\times$ \texttt{TransformerDecoderLayer}
-    ($d_\text{model}=256$, $n_\text{head}=8$, $d_\text{ff}=512$, \texttt{norm\_first=True}),
-    cross-attending to $\mathbf{s}$ unsqueezed to $(B\times1\times256)$.
-  \item \textbf{Output:} Linear($256\to23$) $\to$ logits $(B, 32, 23)$.
+    ($d=256$, $h=8$, $d_\text{ff}=512$, \texttt{norm\_first=True}),
+    cross-attending to $\mathbf{s}$ as a length-1 memory.
+  \item \textbf{Output:} Linear$(256\!\to\!23)$ giving logits $(B, 32, 23)$.
 \end{itemize}
 
 \paragraph{Forward process.}
-We use categorical (multinomial) diffusion with $T=200$ timesteps and linear noise
-schedule $\beta_1=0.001$, $\beta_T=0.02$. The closed-form marginal is:
+Categorical diffusion with $T=200$ timesteps, linear schedule
+$\beta_1=0.001$, $\beta_T=0.02$. The marginal is:
 \begin{equation}
-  q(x_t \mid x_0): \text{ keep } x_0 \text{ w.p. } \bar\alpha_t =
-  \prod_{i=1}^{t}(1-\beta_i),\quad \text{else Uniform}(23).
+  q(x_t \mid x_0):\; x_0 \text{ kept w.p. } \bar\alpha_t =
+  \prod_{i=1}^{t}(1-\beta_i),\quad \text{else } x_t \sim \text{Uniform}(23).
 \end{equation}
 
 \paragraph{Training.}
-Both mzML files yield 3,142 labeled spectra, split 70/15/15 (2,199/471/472).
-Loss: CrossEntropy with \texttt{label\_smoothing=0.1}. Optimiser: Adam,
-$\text{lr}=10^{-3}$, gradient clip 1.0, batch size 32 (\texttt{drop\_last=True}),
-50 epochs on a Colab T4 GPU.
+3,142 labeled spectra from both mzML files, split 70/15/15 (2,199/471/472).
+CrossEntropy loss (\texttt{label\_smoothing=0.1}), Adam ($\text{lr}=10^{-3}$,
+clip 1.0), batch 32 (\texttt{drop\_last=True}), 50 epochs on a Colab T4 GPU.
 
 \paragraph{Inference.}
-One-shot at $t=100$: draw $x_t \sim \text{Uniform}(23)^{L}$, forward through the
-denoiser to obtain $\hat{x}_0$, then apply the entropy-adaptive gate at $t=0$ with
-$\hat{x}_0$ as input.
+One-shot at $t=100$: random $x_t \sim \text{Uniform}(23)^{L}$ is passed through
+the denoiser to obtain $\hat{x}_0$. The entropy-adaptive gate is then applied at
+$t=0$ with $\hat{x}_0$ as input to produce the final sequence.
 
-\subsection{Novel \#1 --- Entropy-Adaptive Mass Gate (V-2)}
+\subsection{Entropy-Adaptive Mass Gate (V-2)}
 
-We replace the standard fixed-tolerance mass gate with a \textbf{per-position adaptive
-tolerance} proportional to the model's Shannon entropy at that position:
+The standard mass gate uses a fixed tolerance; here we tie the per-position
+tolerance to the model's local uncertainty. At position $i$, the tolerance is:
 \begin{equation}
-  \text{tol}(i) = \underbrace{0.02}_{\text{base, Da}}
-  \times \left(1 + \alpha \cdot \frac{H_t(i)}{\ln 23}\right),
-  \quad \alpha = 2.0.
+  \text{tol}(i) = 0.02\;\text{Da} \times
+  \left(1 + 2.0 \cdot \frac{H_t(i)}{\ln 23}\right),
 \end{equation}
-High entropy (uncertain position) widens the gate; low entropy (confident) keeps it
-tight. For each position $i$, any token $a$ is zeroed if:
+where $H_t(i)$ is the Shannon entropy of the denoiser's softmax at position $i$.
+A token $a$ at position $i$ is masked out if:
 \begin{equation}
-  \left|\sum_{j\neq i} m(\hat{x}_{0,j}) + m(a) + m(\text{H}_2\text{O})
-  - M_\text{precursor}\right| \geq \text{tol}(i),
+  \left|\sum_{j \neq i} m(\hat{x}_{0,j}) + m(a) + m(\mathrm{H_2O})
+  - M_\text{pre}\right| \geq \text{tol}(i),
 \end{equation}
-where $m(\cdot)$ is the monoisotopic residue mass and $M_\text{precursor}$ is the
-neutral precursor mass from the mzML file. A fallback tolerance of 0.1~Da is applied
-if the tight gate zeroes all amino acids. PAD/SOS/EOS tokens always pass. The
-\textbf{gate confidence} (fraction of positions where the 0.02~Da gate held) is
-exported per spectrum to \texttt{results/diffusion\_predictions.csv}.
+with $m(\cdot)$ the monoisotopic residue mass and $M_\text{pre}$ the neutral
+precursor mass. If all amino acids are masked, tolerance relaxes to 0.1~Da.
+PAD/SOS/EOS always pass. Gate confidence (fraction of positions where the
+tight 0.02~Da gate held) is recorded per spectrum.
 
-No published diffusion peptide sequencer (InstaNovo+, $\pi$-PrimeNovo) applies
-per-position entropy-scaled mass constraints at every reverse step.
+Neither InstaNovo+ nor $\pi$-PrimeNovo couples per-position generation uncertainty
+to mass constraint tolerance in this way.
 
-\subsection{Novel \#4 --- Spectral Noise Augmentation (V-3)}
+\subsection{Spectral Noise Augmentation (V-3)}
 
-During training, with probability $p=0.4$, Gaussian noise scaled to 5\% of each
-spectrum's own standard deviation is added to the binned spectrum before the encoder:
+With probability $p=0.4$ per training batch, Gaussian noise proportional to
+5\% of each spectrum's standard deviation is added before the encoder:
 \begin{equation}
-  \tilde{\mathbf{s}} = \text{clamp}\!\left(\mathbf{s} + \mathcal{N}(0,\,
-  (0.05\cdot\sigma_\mathbf{s})^2 \mathbf{I}),\; 0, 1\right).
+  \tilde{\mathbf{s}} = \mathrm{clamp}\!\left(
+  \mathbf{s} + \varepsilon,\; 0, 1\right),
+  \quad \varepsilon \sim \mathcal{N}(0,\,(0.05\,\sigma_\mathbf{s})^2\mathbf{I}).
 \end{equation}
-This forces the encoder to learn noise-robust features, improving generalisation from
-clean Orbitrap E.~coli spectra to noisier wastewater mzML. Augmentation is disabled
-at inference via \texttt{torch.is\_grad\_enabled()}.
+The intent is to reduce the gap between clean Orbitrap training spectra and noisier
+environmental acquisitions. Augmentation is skipped at inference.
 
-\subsection{ESM-2 Pseudo-Perplexity Scoring (Sanika)}
+\subsection{ESM-2 Pseudo-Perplexity Scoring}
 
-ESM-2 (8M parameters, \texttt{facebook/esm2\_t6\_8M\_UR50D}) scores biological
-plausibility of all model predictions using the \emph{one-fell-swoop} method
-\citep{kantroo2024}: all residues are masked simultaneously in a single forward pass,
+ESM-2 (8M, \texttt{esm2\_t6\_8M\_UR50D}~\citep{esm2}) scores each predicted
+sequence for biological plausibility using the one-fell-swoop method~\citep{kantroo2024}:
+all positions are masked in one forward pass,
 \begin{equation}
-  \text{PPL}(\mathbf{x}) = \exp\!\left(-\frac{1}{L}\sum_{i=1}^{L}
-  \log p_\theta(x_i \mid \mathbf{x}_{\setminus i})\right).
+  \mathrm{PPL}(\mathbf{x}) = \exp\!\left(
+  -\frac{1}{L}\sum_{i=1}^{L}\log p_\theta(x_i \mid \mathbf{x}_{\setminus i})
+  \right).
 \end{equation}
-Lower PPL indicates a more biologically natural sequence.
+Lower PPL indicates higher agreement with ESM-2's learned protein statistics.
 
-\subsection{Multi-Model Ensemble (Akshay)}
+\subsection{Multi-Model Ensemble}
 
-For each of the 472 test spectra, the ensemble collects top-5 diffusion candidates
-plus top-1 LSTM and top-1 GRU predictions. Each candidate is scored as:
+For each test spectrum, we collect top-5 diffusion candidates, top-1 LSTM, and
+top-1 GRU prediction. Each candidate $c$ is ranked by:
 \begin{equation}
-  \text{score}(c) = \lambda \cdot \log p_\text{spectral}(c)
-  - \gamma \cdot \log \text{PPL}_{\text{ESM-2}}(c).
+  \mathrm{score}(c) = \lambda \cdot \log p_\text{spec}(c)
+  - \gamma \cdot \log \mathrm{PPL}_\text{ESM-2}(c).
 \end{equation}
-A grid search over $\lambda\in\{0, 0.05, 0.10, 0.20, 0.50\}$ and
-$\gamma\in\{0, 0.1, 0.3, 0.5\}$ on the validation set selects the optimal weights.
+$\lambda$ and $\gamma$ are selected by grid search on the validation set
+($\lambda\in\{0,0.05,0.10,0.20,0.50\}$, $\gamma\in\{0,0.1,0.3,0.5\}$).
 
-\subsection{Wastewater FDR Pipeline (Sanika)}
+\subsection{Wastewater FDR Pipeline}
 
-Four unlabelled wastewater mzML files are processed by the diffusion model. A
-target-decoy strategy estimates empirical FDR: each spectrum's $m/z$ array is
-reversed to form a decoy, the same inference pipeline is applied, and
+Four wastewater mzML files (two samples, two replicates each) are run through
+the diffusion model without labels. FDR is estimated via target-decoy:
+each spectrum's $m/z$ array is reversed, the same pipeline is applied to the
+decoy, and
 \begin{equation}
-  \text{FDR}(\tau) = \frac{|\text{decoy PSMs with score} > \tau|}
-  {|\text{target PSMs with score} > \tau|}.
+  \mathrm{FDR}(\tau) = \frac{|\{\text{decoy PSMs}: \mathrm{score}>\tau\}|}
+  {|\{\text{target PSMs}: \mathrm{score}>\tau\}|}.
 \end{equation}
-Identifications passing FDR $\leq 5\%$ are reported.
+Identifications with $\mathrm{FDR} \leq 5\%$ are retained.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Results}
 % ─────────────────────────────────────────────────────────────────────────────
 
-\subsection{Table 1 --- Model Comparison on E.~coli EV Test Set}
+\subsection{Model Performance on E.~coli EV Test Set}
 
 \begin{table}[H]
 \centering
-\caption{AA Recall and Peptide Accuracy on the 472-spectrum E.~coli EV test set.
-  Bold = best among trained models. $\dagger$ = reference, not retrained.}
+\caption{AA recall and peptide accuracy on the 472-spectrum held-out test set.
+  Three seeds are reported to quantify variance. $\dagger$: reference numbers
+  from the InstaNovo paper, not retrained.}
 \label{tab:results}
 \begin{tabular}{lcc}
 \toprule
 \textbf{Model} & \textbf{AA Recall (\%)} & \textbf{Pep.\ Acc.\ (\%)} \\
 \midrule
-LSTM Baseline        & 31.51          & 2.68  \\
-GRU Ablation         & 44.30          & 6.70  \\
+LSTM Baseline        & 31.51 & 2.68 \\
+GRU Ablation         & 44.30 & 6.70 \\
 \midrule
-Diffusion --- Seed 0 & 71.59          & 12.50 \\
-Diffusion --- Seed 1 & 68.64          & 12.29 \\
-Diffusion --- Seed 2 & 72.09          & 15.04 \\
+Diffusion (seed 0)   & 71.59 & 12.50 \\
+Diffusion (seed 1)   & 68.64 & 12.29 \\
+Diffusion (seed 2)   & 72.09 & 15.04 \\
 \rowcolor{gray!15}
 Diffusion mean $\pm$ std & $\mathbf{70.77 \pm 1.52}$ & $13.28 \pm 1.25$ \\
 \midrule
-Diffusion (no gate)  & 73.20          & 17.80 \\
-Diffusion (gate ON)  & 72.01          & 15.04 \\
+Diffusion, gate off  & 73.20 & 17.80 \\
+Diffusion, gate on   & 72.01 & 15.04 \\
 \midrule
-Ensemble ($\lambda=0.05$, $\gamma=0.0$) & 45.82 & 0.56 \\
+Ensemble ($\lambda{=}0.05$, $\gamma{=}0$) & 45.82 & 0.56 \\
 \midrule
-InstaNovo (ref)$^\dagger$ & 72.9      & 33.1  \\
+InstaNovo$^\dagger$  & 72.9  & 33.1  \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The diffusion model (mean 70.77\%) nearly matches InstaNovo (72.9\%) on AA recall
-and substantially outperforms both CP1 baselines. The 3-seed variance ($\pm1.52\%$)
-confirms the result is reproducible, not a lucky run.
+The diffusion model reaches 70.77\% AA recall, within 2.1 points of the InstaNovo
+reference and 26 points above the best CP1 baseline. Variance across seeds is
+$\pm1.52\%$, indicating the result is stable.
 
 \paragraph{Gate ablation.}
-Disabling the entropy-adaptive gate increases raw AA recall slightly
-(73.20\% vs.\ 72.01\%), but gated predictions satisfy precursor mass
-constraints — ungated sequences are physically impossible and would be discarded
-in any mass-validated pipeline.
+Turning the mass gate off raises AA recall by 1.2 points (73.20\% vs.\ 72.01\%).
+The gated model is physically constrained---predicted sequences are consistent with
+the observed precursor mass---while the ungated model is not, making direct recall
+comparison somewhat misleading.
 
-\paragraph{Ensemble regression.}
-The ensemble (45.82\%) underperforms the standalone diffusion model. LSTM and GRU
-candidates share correlated failure modes (repetition collapse), which prevents
-the ensemble from gaining diversity benefits.
+\paragraph{Ensemble.}
+The ensemble scores 45.82\%, well below the diffusion model alone. The LSTM and GRU
+candidates that enter the pool share the same failure mode (repetition of frequent
+residues), so adding them introduces noise rather than complementary signal.
 
 \subsection{Training Curves and Gate Confidence}
 
@@ -221,18 +218,18 @@ the ensemble from gaining diversity benefits.
   \centering
   \begin{subfigure}[b]{0.48\textwidth}
     \includegraphics[width=\textwidth]{loss_curves.png}
-    \caption{Train/val cross-entropy loss over 50 epochs (seed 42). Loss drops
-      from $\sim$1.94 to $\sim$0.99 with no significant train/val gap.}
+    \caption{Train/val cross-entropy over 50 epochs (seed 42). Loss decreases
+      from 1.94 to 0.99; the train/val gap remains small throughout.}
     \label{fig:loss}
   \end{subfigure}
   \hfill
   \begin{subfigure}[b]{0.48\textwidth}
     \includegraphics[width=\textwidth]{gate_confidence_histogram.png}
-    \caption{Gate confidence distribution over 472 test spectra. Values near 0
-      indicate the fallback 0.1~Da tolerance was needed at most positions.}
+    \caption{Gate confidence distribution on the test set. Low values indicate
+      the 0.1~Da fallback tolerance was needed at most positions.}
     \label{fig:gate}
   \end{subfigure}
-  \caption{Diffusion model training dynamics and entropy-adaptive gate behaviour.}
+  \caption{Training dynamics and gate behaviour for the diffusion model.}
   \label{fig:training}
 \end{figure}
 
@@ -240,39 +237,39 @@ the ensemble from gaining diversity benefits.
 
 \begin{table}[H]
 \centering
-\caption{ESM-2 pseudo-perplexity statistics. Lower PPL = more biologically natural.}
+\caption{ESM-2 PPL statistics per source. Lower = more consistent with known
+  protein sequences.}
 \label{tab:esm}
-\begin{tabular}{lccc}
+\begin{tabular}{lrrr}
 \toprule
-\textbf{Source} & \textbf{Mean PPL} & \textbf{Std PPL} & \textbf{n} \\
+\textbf{Source} & \textbf{Mean PPL} & \textbf{Std} & \textbf{n} \\
 \midrule
-Diffusion predictions & 31.03 & 10.34 & 472 \\
-GRU predictions       & 31.33 & 10.79 & 472 \\
-LSTM predictions      & 31.43 & 12.18 & 472 \\
-Ground truth          & 31.38 & 11.21 & 354 \\
-Random sequences      & 35.19 &  7.35 &  50 \\
+Diffusion   & 31.03 & 10.34 & 472 \\
+GRU         & 31.33 & 10.79 & 472 \\
+LSTM        & 31.43 & 12.18 & 472 \\
+Ground truth & 31.38 & 11.21 & 354 \\
+Random      & 35.19 &  7.35 &  50 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-All three models produce sequences with PPL comparable to ground truth ($\approx31$),
-substantially below random (35.19). The diffusion model achieves the lowest mean PPL
-(31.03), marginally outperforming the baselines in biological plausibility.
+All three models score near the ground truth mean ($\approx31$), and notably below
+random sequences (35.19). The diffusion model has the lowest mean PPL of the three.
 
 \begin{figure}[H]
   \centering
   \begin{subfigure}[b]{0.48\textwidth}
     \includegraphics[width=\textwidth]{figure1_esm2_violin.png}
-    \caption{Violin plot of ESM-2 PPL distributions. All models cluster near
-      ground truth, well below random sequences.}
+    \caption{PPL distributions by source. Model predictions cluster near ground
+      truth; random sequences are the clear outlier.}
   \end{subfigure}
   \hfill
   \begin{subfigure}[b]{0.48\textwidth}
     \includegraphics[width=\textwidth]{figure2_esm2_heatmap.png}
-    \caption{Per-residue PPL heatmap across test predictions. Darker cells
-      indicate positions with lower biological naturalness confidence.}
+    \caption{Per-residue PPL heatmap. Darker cells mark positions where ESM-2
+      assigns lower probability to the predicted residue.}
   \end{subfigure}
-  \caption{ESM-2 pseudo-perplexity analysis across all model sources.}
+  \caption{ESM-2 pseudo-perplexity across model outputs.}
   \label{fig:esm}
 \end{figure}
 
@@ -281,83 +278,95 @@ substantially below random (35.19). The diffusion model achieves the lowest mean
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.55\textwidth]{figure3_ensemble_heatmap.png}
-  \caption{Ensemble grid search heatmap (AA recall on validation set).
-    Optimal: $\lambda=0.05$, $\gamma=0.0$.}
+  \caption{Validation AA recall across $(\lambda, \gamma)$ pairs. Best result at
+    $\lambda=0.05$, $\gamma=0$, meaning the spectral log-probability alone is the
+    useful signal; ESM-2 PPL does not improve rankings here.}
   \label{fig:ensemble}
 \end{figure}
 
-\subsection{Wastewater Pipeline}
+\subsection{Wastewater Identifications}
 
 \begin{table}[H]
 \centering
-\caption{Wastewater de novo identifications. FDR controlled at 5\% via target-decoy.}
+\caption{De novo PSMs from four wastewater mzML files after 5\% FDR filtering.}
 \label{tab:ww}
 \begin{tabular}{lccc}
 \toprule
-\textbf{Sample} & \textbf{Total PSMs} & \textbf{PSMs at 5\% FDR} & \textbf{Unique Peptides} \\
+\textbf{Sample} & \textbf{Total PSMs} & \textbf{at 5\% FDR} & \textbf{Unique seqs.} \\
 \midrule
-wastewater\_Sample1\_1 & 4  & 0 & 0 \\
-wastewater\_Sample1\_2 & 6  & 0 & 0 \\
-wastewater\_Sample2\_1 & 3  & 3 & 3 \\
-wastewater\_Sample2\_2 & 3  & 3 & 3 \\
+Sample 1, rep.\ 1 & 4  & 0 & 0 \\
+Sample 1, rep.\ 2 & 6  & 0 & 0 \\
+Sample 2, rep.\ 1 & 3  & 3 & 3 \\
+Sample 2, rep.\ 2 & 3  & 3 & 3 \\
 \midrule
-\textbf{Total}          & \textbf{16} & \textbf{6} & \textbf{6} \\
+\textbf{Total}    & \textbf{16} & \textbf{6} & \textbf{6} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-16 total PSMs were identified; 6 passed the 5\% FDR threshold, all from Sample~2.
-All 6 are distinct sequences, suggesting genuine microbial diversity. Without a
-reference proteome these represent putative novel microbial peptides.
+16 PSMs were identified across the four files; 6 passed the 5\% FDR threshold,
+all from Sample~2. Sample~1 identifications did not survive filtering. No reference
+proteome is available for these samples, so these 6 sequences cannot be validated
+beyond the FDR criterion.
 
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Discussion and Limitations}
+\section{Discussion}
 % ─────────────────────────────────────────────────────────────────────────────
 
-\paragraph{Peptide accuracy gap.}
-The diffusion model achieves comparable AA recall to InstaNovo (70.77\% vs.\ 72.9\%)
-but substantially lower peptide accuracy (13.28\% vs.\ 33.1\%). One-shot generation
-at $t=100$ recovers the right \emph{composition} but not always the correct
-\emph{ordering} --- an inherent limitation of non-autoregressive generation.
+\paragraph{AA recall vs.\ peptide accuracy.}
+The diffusion model reaches 70.77\% AA recall but only 13.28\% peptide accuracy,
+compared to InstaNovo's 33.1\% peptide accuracy at similar AA recall. One-shot
+generation at $t=100$ recovers the correct amino acid \emph{composition} but not
+reliably the correct \emph{order}. Iterative reverse diffusion would likely help
+but collapsed during development due to EOS/PAD token injection in the re-noising
+step; one-shot was the stable fallback.
 
-\paragraph{Gate ablation interpretation.}
-The no-gate run achieves marginally higher AA recall (73.20\% vs.\ 72.01\%).
-However, ungated predictions violate precursor mass constraints and would be rejected
-in any validated pipeline; the gate is scientifically necessary even at a small recall cost.
+\paragraph{Gate trade-off.}
+The ungated model scores 1.2 points higher on raw AA recall but produces sequences
+that violate the precursor mass constraint. For any downstream use---database
+matching, FDR estimation, structural modelling---mass consistency is required, so
+the gated variant is the operationally correct comparison point.
 
-\paragraph{Ensemble regression.}
-The ensemble (45.82\%) underperforms the diffusion model alone. LSTM and GRU candidates
-share correlated error patterns (repetition collapse), providing no complementary signal.
+\paragraph{Ensemble failure mode.}
+The ensemble was expected to benefit from model diversity. In practice, LSTM and GRU
+both collapse to repetitive high-frequency residue predictions on longer sequences,
+so their candidates are correlated rather than complementary. A better ensemble
+would require a third model with structurally different failure modes.
 
-\paragraph{Wastewater yield.}
-Only 6/16 PSMs survive FDR filtering. The domain gap between clean E.~coli Orbitrap
-training spectra and environmental mzML is substantial; spectral noise augmentation
-partially addresses this but cannot fully bridge it.
-
+\paragraph{Wastewater coverage.}
+Six identifications at 5\% FDR is a low yield for four mzML files. The model was
+trained on clean Orbitrap E.~coli spectra; wastewater acquisitions differ in noise
+profile, charge distribution, and peptide composition. Spectral augmentation
+reduces but does not eliminate this gap.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \bibliographystyle{unsrt}
 \begin{thebibliography}{9}
 
 \bibitem{instanovo}
-Eloff, J.\ N.\ et al.\ (2024).
+Eloff, J.~N. et al.
 \emph{De novo peptide sequencing with InstaNovo}.
-arXiv:2408.08968.
+arXiv:2408.08968, 2024.
 
-\bibitem{kantroo2024}
-Kantroo, M.\ et al.\ (2024).
-\emph{One-fell-swoop pseudo-perplexity for protein language models}.
-bioRxiv.
+\bibitem{tran2017}
+Tran, N.~H. et al.
+\emph{De novo peptide sequencing by deep learning}.
+PNAS, 114(31):8247--8252, 2017.
 
 \bibitem{austin2021}
-Austin, J.\ et al.\ (2021).
+Austin, J. et al.
 \emph{Structured denoising diffusion models in discrete state-spaces}.
-NeurIPS 2021.
+NeurIPS, 2021.
 
 \bibitem{esm2}
-Lin, Z.\ et al.\ (2022).
+Lin, Z. et al.
 \emph{Evolutionary-scale prediction of atomic-level protein structure with a language model}.
-Science, 379(6637).
+Science, 379(6637):1123--1130, 2023.
+
+\bibitem{kantroo2024}
+Kantroo, M. et al.
+\emph{Pseudo-perplexity in one fell swoop for protein language models}.
+bioRxiv, 2024.
 
 \end{thebibliography}
 
