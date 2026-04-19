@@ -175,9 +175,7 @@ def build_story():
             TITLE),
         SP(4),
         Paragraph(
-            "Vaishak Girish Kumar &nbsp;&nbsp;·&nbsp;&nbsp; "
-            "Akshay Mohan Revankar &nbsp;&nbsp;·&nbsp;&nbsp; "
-            "Sanika Vilas Najan",
+            "CSE 676 Deep Learning Group Project",
             AUTHORS),
         Paragraph(
             "CSE 676 Deep Learning — Checkpoint 2 &nbsp;|&nbsp; "
@@ -234,7 +232,7 @@ def build_story():
     story += [Paragraph("2&nbsp;&nbsp;Methods", H1)]
 
     story += [
-        Paragraph("2.1&nbsp;&nbsp;TransformerDenoiser (Base, Vaishak)", H2),
+        Paragraph("2.1&nbsp;&nbsp;TransformerDenoiser (Base)", H2),
         Paragraph(
             "We reuse the <font name='Courier'>Encoder</font> from CP1 unchanged: MLP "
             "20000→1024→512→256, ReLU+Dropout(0.3), outputting a 256-dim context vector s. "
@@ -255,7 +253,7 @@ def build_story():
     story.append(SP())
 
     story += [
-        Paragraph("2.2&nbsp;&nbsp;NOVEL #1 — Entropy-Adaptive Mass Gate (Vaishak)", H2),
+        Paragraph("2.2&nbsp;&nbsp;NOVEL #1 — Entropy-Adaptive Mass Gate", H2),
         Paragraph(
             "We make the precursor mass tolerance per-position adaptive:", PARA),
         Paragraph(
@@ -273,7 +271,7 @@ def build_story():
             "<b>Gate ablation (rubric requirement):</b> inference with gate disabled "
             "(use_gate=False, tol→∞) as a separate condition; results in Table 1.", PARA),
 
-        Paragraph("2.3&nbsp;&nbsp;NOVEL #4 — Spectral Noise Augmentation (Vaishak)", H2),
+        Paragraph("2.3&nbsp;&nbsp;NOVEL #4 — Spectral Noise Augmentation", H2),
         Paragraph(
             "During training (p_aug = 0.4), Gaussian noise scaled to 5% of each spectrum's "
             "std is added before the encoder:", PARA),
@@ -283,7 +281,7 @@ def build_story():
             "Forces the encoder to learn noise-robust features, enabling generalisation from "
             "clean E. coli EV Orbitrap data to noisier wastewater mzML spectra.", PARA),
 
-        Paragraph("2.4&nbsp;&nbsp;NOVEL #2 — Per-Residue ESM-2 Scorer (Sanika)", H2),
+        Paragraph("2.4&nbsp;&nbsp;NOVEL #2 — Per-Residue ESM-2 Scorer", H2),
         Paragraph(
             "We score every prediction with facebook/esm2_t6_8M_UR50D (8M params) using the "
             "<i>one-fell-swoop</i> masked forward pass [Kantroo 2024] — all positions masked "
@@ -294,7 +292,7 @@ def build_story():
             "Kantroo 2024 uses only scalar PPL; nobody applies residue-level vectors to "
             "de novo peptide filtering.", PARA),
 
-        Paragraph("2.5&nbsp;&nbsp;NOVEL #6 — EV Cargo Anomaly Detection (Sanika)", H2),
+        Paragraph("2.5&nbsp;&nbsp;NOVEL #6 — EV Cargo Anomaly Detection", H2),
         Paragraph(
             "PPL is converted to a z-score vs ground-truth E. coli EV reference "
             "distribution (μ_ref, σ_ref). Predictions where z > 2.5 AND "
@@ -302,7 +300,7 @@ def build_story():
             "— biologically unusual but spectrally well-supported. "
             "Top-5 anomalous sequences are in Section 5.", PARA),
 
-        Paragraph("2.6&nbsp;&nbsp;NOVEL #3 — Three-Term Val-Calibrated Ensemble (Akshay)", H2),
+        Paragraph("2.6&nbsp;&nbsp;NOVEL #3 — Three-Term Val-Calibrated Ensemble", H2),
         Paragraph(
             "Ensemble score combining all three novel signals:", PARA),
         Paragraph(
@@ -313,7 +311,7 @@ def build_story():
             "gate_confidence = 0 for LSTM/GRU. "
             "The λ/γ ablation heatmap is Figure 3.", PARA),
 
-        Paragraph("2.7&nbsp;&nbsp;NOVEL #5 — Cross-Replicate Jaccard Consistency (Akshay)", H2),
+        Paragraph("2.7&nbsp;&nbsp;NOVEL #5 — Cross-Replicate Jaccard Consistency", H2),
         Paragraph(
             "For each sample pair of replicates: "
             "J(R1, R2) = |R1 ∩ R2| / |R1 ∪ R2|. "
@@ -322,14 +320,14 @@ def build_story():
             "InstaNovo uses Jaccard only post-hoc; we integrate it as a "
             "per-prediction confidence score.", PARA),
 
-        Paragraph("2.8&nbsp;&nbsp;NOVEL #7 — ESM-2 PPL as Winnow FDR Feature (Akshay)", H2),
+        Paragraph("2.8&nbsp;&nbsp;NOVEL #7 — ESM-2 PPL as Winnow FDR Feature", H2),
         Paragraph(
             "After target-decoy FDR, ESM-2 PPL and anomalous-residue fraction are passed as "
             "features alongside mass_error and beam_margin into logistic Winnow calibration, "
             "making FDR calibration biologically informed. Feature importances in Table 5. "
             "Not done in any published de novo metaproteomics pipeline.", PARA),
 
-        Paragraph("2.9&nbsp;&nbsp;Base — Target-Decoy FDR Pipeline (Sanika)", H2),
+        Paragraph("2.9&nbsp;&nbsp;Base — Target-Decoy FDR Pipeline", H2),
         Paragraph(
             "All 4 wastewater mzML files loaded via "
             "<font name='Courier'>data_loader.load_raw_spectra</font>. "
@@ -507,23 +505,23 @@ def build_story():
         Paragraph("6&nbsp;&nbsp;Innovation Summary — 7 Novel Contributions", H1),
 
         _tbl([
-            ["#", "Owner",   "Contribution",                       "Why Novel"],
-            ["1", "Vaishak", "Entropy-adaptive mass gate",
+            ["#", "Contribution",                       "Why Novel"],
+            ["1", "Entropy-adaptive mass gate",
              "Per-position tolerance from denoising entropy. Not in InstaNovo+, pi-PrimeNovo."],
-            ["2", "Sanika",  "Per-residue ESM-2 PPL vector",
+            ["2", "Per-residue ESM-2 PPL vector",
              "Position-level biological plausibility. Kantroo 2024 uses scalar PPL only."],
-            ["3", "Akshay",  "Three-term val-calibrated ensemble",
+            ["3", "Three-term val-calibrated ensemble",
              "Gate_confidence (#1) + per-residue PPL (#2) as explicit terms; λ,γ calibrated."],
-            ["4", "Vaishak", "Spectral noise augmentation",
+            ["4", "Spectral noise augmentation",
              "Forces noise-robust encoder. Enables clean Orbitrap→wastewater generalisation."],
-            ["5", "Akshay",  "Cross-replicate Jaccard consistency",
+            ["5", "Cross-replicate Jaccard consistency",
              "Per-prediction confidence column, not post-hoc metric as in InstaNovo."],
-            ["6", "Sanika",  "EV cargo anomaly detection",
+            ["6", "EV cargo anomaly detection",
              "PPL z-score vs reference = biological discovery tool, not just filter."],
-            ["7", "Akshay",  "ESM-2 PPL as Winnow FDR feature",
+            ["7", "ESM-2 PPL as Winnow FDR feature",
              "Biologically informed FDR calibration. Not in any published pipeline."],
         ],
-        col_widths=[0.3*inch, 0.8*inch, 1.8*inch, 3.7*inch]),
+        col_widths=[0.3*inch, 2.3*inch, 4.0*inch]),
         SP(8),
     ]
 
@@ -568,28 +566,24 @@ def build_story():
 
     story.append(PageBreak())
 
-    # ── Individual contributions ───────────────────────────────────────────────
+    # ── Group contributions ────────────────────────────────────────────────────
     story += [
-        Paragraph("Individual Contributions", H1),
+        Paragraph("Group Contributions", H1),
         Paragraph(
-            "<b>Vaishak Girish Kumar</b> implemented src/diffusion.py: the "
-            "TransformerDenoiser architecture (V-1), the entropy-adaptive mass gate with "
-            "gate ablation and gate_confidence export (V-2, NOVEL #1), and spectral noise "
-            "augmentation with ablation (V-3, NOVEL #4). Ran all 3-seed training runs on "
-            "Google Colab T4.", PARA),
-        Paragraph(
-            "<b>Sanika Vilas Najan</b> implemented src/esm_scoring.py: the per-residue "
-            "ESM-2 scorer with one-fell-swoop masking (S-1, NOVEL #2) and EV cargo anomaly "
-            "detection via PPL z-score (S-2, NOVEL #6). Also implemented "
-            "src/wastewater_pipeline.py: the target-decoy FDR pipeline (S-3), "
-            "cross-replicate Jaccard consistency (NOVEL #5), and ESM-2 Winnow calibration "
-            "(NOVEL #7).", PARA),
-        Paragraph(
-            "<b>Akshay Mohan Revankar</b> implemented src/ensemble.py: the three-term "
-            "val-calibrated ensemble with λ/γ grid search (A-1, NOVEL #3). Updated "
-            "notebooks/04_diffusion.ipynb with end-to-end training, evaluation, "
-            "gate_confidence histogram, and model comparison bar chart. Compiled this report.",
-            PARA),
+            "The team collectively designed and implemented all components of this checkpoint. "
+            "<font name='Courier'>src/diffusion.py</font> contains the TransformerDenoiser "
+            "architecture, the entropy-adaptive mass gate with gate ablation (NOVEL #1), and "
+            "spectral noise augmentation (NOVEL #4); training was run on Google Colab T4 "
+            "across 3 seeds. "
+            "<font name='Courier'>src/esm_scoring.py</font> provides the per-residue ESM-2 "
+            "scorer (NOVEL #2) and EV cargo anomaly detection via PPL z-score (NOVEL #6). "
+            "<font name='Courier'>src/wastewater_pipeline.py</font> implements the "
+            "target-decoy FDR pipeline, cross-replicate Jaccard consistency (NOVEL #5), and "
+            "ESM-2 Winnow calibration (NOVEL #7). "
+            "<font name='Courier'>src/ensemble.py</font> implements the three-term "
+            "val-calibrated ensemble with λ/γ grid search (NOVEL #3). "
+            "<font name='Courier'>notebooks/04_diffusion.ipynb</font> integrates end-to-end "
+            "training, evaluation, and all visualisations.", PARA),
     ]
 
     # ── LLM statement ──────────────────────────────────────────────────────────
@@ -636,7 +630,7 @@ def build_pdf(out_path=OUT):
         topMargin=TOP_MARGIN,
         bottomMargin=BOTTOM_MARGIN,
         title="CSE 676 CP2 — De Novo Peptide Sequencing via Multinomial Diffusion",
-        author="Vaishak Girish Kumar, Akshay Mohan Revankar, Sanika Vilas Najan",
+        author="CSE 676 Deep Learning — Checkpoint 2",
     )
     doc.build(build_story(), canvasmaker=NumberedCanvas)
     print(f"PDF saved → {out_path}")
