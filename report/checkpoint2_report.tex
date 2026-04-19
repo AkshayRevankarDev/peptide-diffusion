@@ -334,35 +334,6 @@ Only 6/16 PSMs survive FDR filtering. The domain gap between clean E.~coli Orbit
 training spectra and environmental mzML is substantial; spectral noise augmentation
 partially addresses this but cannot fully bridge it.
 
-% ─────────────────────────────────────────────────────────────────────────────
-\section{Group Contributions}
-% ─────────────────────────────────────────────────────────────────────────────
-
-\textbf{Vaishak Girish Kumar:} \texttt{src/diffusion.py} --- TransformerDenoiser,
-forward/reverse process, entropy-adaptive mass gate (Novel~\#1), spectral noise
-augmentation (Novel~\#4), 3-seed reproducibility, gate ablation.
-\texttt{notebooks/04\_diffusion.ipynb} --- end-to-end Colab training and evaluation.
-\texttt{results/diffusion\_predictions.csv}.
-
-\textbf{Sanika Vilas Nanjan:} \texttt{src/esm\_scoring.py} --- ESM-2 pseudo-perplexity
-scorer. \texttt{src/wastewater\_pipeline.py} --- target-decoy FDR pipeline.
-\texttt{results/esm2\_scores.csv}, \texttt{results/wastewater\_predictions\_5pct\_fdr.csv},
-Figures~1--2 (ESM-2 plots).
-
-\textbf{Akshay Mohan Revankar:} \texttt{src/ensemble.py} --- multi-model ensemble with
-val-calibrated grid search. \texttt{results/ensemble\_predictions.csv},
-\texttt{results/ensemble\_grid\_search.csv}, Figures~3--4 (ensemble/comparison plots).
-Repository maintenance and report compilation.
-
-% ─────────────────────────────────────────────────────────────────────────────
-\section{LLM Usage Statement}
-% ─────────────────────────────────────────────────────────────────────────────
-
-Claude Code (Anthropic) was used to assist with code scaffolding, notebook path
-configuration, and report generation. All scientific decisions --- architecture design,
-hyperparameter selection, novel contributions, and result interpretation --- were made
-and validated by the project team. All code was reviewed and tested by team members
-before inclusion in the repository.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \bibliographystyle{unsrt}
