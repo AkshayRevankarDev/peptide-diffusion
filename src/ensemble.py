@@ -44,6 +44,9 @@ def load_candidate_pool(diffusion_csv: str,
     """
     rows = []
 
+    # spectral_logprob per spectrum from diffusion (used as base score for all models)
+    diffusion_sp_lookup: dict = {}  # {spectrum_id: spectral_logprob}
+
     # ── Diffusion candidates (top-5 per spectrum) ─────────────────────────────
     if os.path.exists(diffusion_csv):
         df_diff = pd.read_csv(diffusion_csv)
@@ -59,12 +62,18 @@ def load_candidate_pool(diffusion_csv: str,
                 )
 
         for _, r in df_diff.iterrows():
-            seq  = str(r["sequence"])
+            seq    = str(r["sequence"])
+            sid    = int(r.get("spectrum_id", -1))
+            sp_lp  = float(r.get("spectral_logprob", float("nan")))
             ppl_scalar, ppl_per_res = esm_lookup.get(seq, (float("nan"), "[]"))
+            # Record the best (highest) spectral_logprob per spectrum for LSTM/GRU reuse
+            if not math.isnan(sp_lp):
+                if sid not in diffusion_sp_lookup or sp_lp > diffusion_sp_lookup[sid]:
+                    diffusion_sp_lookup[sid] = sp_lp
             rows.append({
-                "spectrum_id":       int(r.get("spectrum_id", -1)),
+                "spectrum_id":       sid,
                 "sequence":          seq,
-                "spectral_logprob":  float(r.get("spectral_logprob", float("nan"))),
+                "spectral_logprob":  sp_lp,
                 "gate_confidence":   float(r.get("gate_confidence", 0.0)),
                 "ppl_scalar":        ppl_scalar,
                 "ppl_per_residue":   ppl_per_res,
@@ -87,11 +96,14 @@ def load_candidate_pool(diffusion_csv: str,
         for idx, r in df_lstm.iterrows():
             seq      = str(r.get("predicted_sequence", r.get("sequence", "")))
             true_seq = str(r.get("true_sequence", ""))
+            sid      = int(r.get("spectrum_id", idx))
             ppl_s, ppl_pr = esm_lookup_lstm.get(seq, (float("nan"), "[]"))
+            # Borrow diffusion spectral_logprob for this spectrum so LSTM/GRU
+            # compete on equal footing — avoids NaN→0 dominating negative values
             rows.append({
-                "spectrum_id":       int(r.get("spectrum_id", idx)),
+                "spectrum_id":       sid,
                 "sequence":          seq,
-                "spectral_logprob":  float("nan"),
+                "spectral_logprob":  diffusion_sp_lookup.get(sid, float("nan")),
                 "gate_confidence":   0.0,
                 "ppl_scalar":        ppl_s,
                 "ppl_per_residue":   ppl_pr,
@@ -114,11 +126,12 @@ def load_candidate_pool(diffusion_csv: str,
         for idx, r in df_gru.iterrows():
             seq      = str(r.get("predicted_sequence", r.get("sequence", "")))
             true_seq = str(r.get("true_sequence", ""))
+            sid      = int(r.get("spectrum_id", idx))
             ppl_s, ppl_pr = esm_lookup_gru.get(seq, (float("nan"), "[]"))
             rows.append({
-                "spectrum_id":       int(r.get("spectrum_id", idx)),
+                "spectrum_id":       sid,
                 "sequence":          seq,
-                "spectral_logprob":  float("nan"),
+                "spectral_logprob":  diffusion_sp_lookup.get(sid, float("nan")),
                 "gate_confidence":   0.0,
                 "ppl_scalar":        ppl_s,
                 "ppl_per_residue":   ppl_pr,
@@ -140,7 +153,9 @@ def ensemble_score(row: pd.Series, lam: float, gam: float) -> float:
     """
     sp_lp = row.get("spectral_logprob", float("nan"))
     if sp_lp is None or (isinstance(sp_lp, float) and math.isnan(sp_lp)):
-        sp_lp = 0.0
+        # No spectral score available — assign large negative penalty so this
+        # candidate loses to any diffusion candidate that has a real score
+        sp_lp = -1e9
 
     # mean(ppl_per_residue) — use stored JSON array
     ppl_mean = float("nan")
