@@ -81,6 +81,15 @@ if _INFER_STEPS[-1] != 0:
     _INFER_STEPS.append(0)
 
 
+def set_seed(seed: int):
+    """Set all RNG seeds for reproducibility across training runs."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 def q_sample(x0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     """Forward process: keep x0 token with prob ᾱ_t, else Uniform(VOCAB_SIZE)."""
     abar = _alpha_bars[t.cpu()].to(x0.device).unsqueeze(1)
@@ -246,10 +255,11 @@ def build_diffusion_dataset(mzml_path: str, xlsx_path: str, max_spectra: int = 5
 
 # ── Training ───────────────────────────────────────────────────────────────────
 def train_diffusion(mzml_paths, xlsx_paths, checkpoint_dir='checkpoints',
-                    epochs=50, batch_size=32, lr=1e-3, device=None):
+                    epochs=50, batch_size=32, lr=1e-3, device=None, seed=42):
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Device: {device}")
+    set_seed(seed)
+    print(f"Device: {device}  |  Seed: {seed}")
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     Xs, ys, ms = [], [], []
@@ -341,7 +351,7 @@ def decode_tokens(tokens) -> str:
 @torch.no_grad()
 def generate_sequences(encoder, denoiser, spectra, precursor_masses,
                         n_candidates: int = 5, T_sample: float = 0.8,
-                        t_infer: int = 100, device=None):
+                        t_infer: int = 100, device=None, use_gate: bool = True):
     """
     One-shot inference: run denoiser once at t=t_infer with random noise,
     apply entropy-adaptive gate (NOVEL #1), argmax → sequence.
@@ -383,8 +393,12 @@ def generate_sequences(encoder, denoiser, spectra, precursor_masses,
         # NOVEL #1: entropy-adaptive gate applied at t=0 where x0_hat is a
         # real peptide sequence with a well-defined total mass.
         # gate_confidence = fraction of positions where tight 0.02 Da gate held.
-        logits_0        = denoiser(x0_hat, t_zero, context)          # (N, L, V)
-        logits_0_gated, gc = entropy_adaptive_gate(logits_0, mass_t) # gc: (N, L)
+        logits_0 = denoiser(x0_hat, t_zero, context)                 # (N, L, V)
+        if use_gate:
+            logits_0_gated, gc = entropy_adaptive_gate(logits_0, mass_t)
+        else:
+            logits_0_gated = logits_0
+            gc = torch.ones(N, SEQ_LEN, device=device)  # ablation: gate disabled
 
         # Spectral log-prob over gated logits (used by Akshay's ensemble)
         log_fin = F.log_softmax(logits_0_gated, dim=-1)
@@ -423,7 +437,8 @@ def aa_recall(pred: str, true: str) -> float:
 
 
 def evaluate_aa_recall(encoder, denoiser, X_test, y_test, masses_test,
-                        batch_size=32, results_dir='results', device=None):
+                        batch_size=32, results_dir='results', device=None,
+                        use_gate=True):
     if device is None:
         device = next(encoder.parameters()).device
 
@@ -435,7 +450,8 @@ def evaluate_aa_recall(encoder, denoiser, X_test, y_test, masses_test,
         bm  = masses_test[i:i+batch_size]
         byt = y_test[i:i+batch_size]
         seqs, lps, gcs = generate_sequences(encoder, denoiser, bs, bm,
-                                             n_candidates=1, device=device)
+                                             n_candidates=1, device=device,
+                                             use_gate=use_gate)
         for pred_list, lp_list, gc_list, true_tok in zip(seqs, lps, gcs, byt):
             all_seqs.append(pred_list); all_lps.append(lp_list)
             all_gcs.append(gc_list)
