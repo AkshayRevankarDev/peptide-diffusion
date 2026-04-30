@@ -42,6 +42,11 @@ GATE_ALPHA    = 2.0    # scales how much entropy relaxes the gate
 AUG_PROB      = 0.4    # probability of augmenting a training spectrum
 AUG_NOISE_STD = 0.05   # fraction of per-spectrum std to add as noise
 
+# Mass consistency loss weight (Option A fix)
+# Uses relative L1 (|pred-true|/true), so values are in [0,1] range.
+# 0.1 weight means mass term contributes ~10% as much as CE when error is ~10%.
+MASS_LOSS_WEIGHT = 0.1
+
 # VOCAB = "ACDEFGHIKLMNPQRSTVWY"  →  token[i+3] = VOCAB[i]
 _MONO_MASSES = [
     71.03711,   # A  token 3
@@ -284,15 +289,16 @@ def train_diffusion(mzml_paths, xlsx_paths, checkpoint_dir='checkpoints',
     encoder  = Encoder().to(device)
     denoiser = TransformerDenoiser().to(device)
     params   = list(encoder.parameters()) + list(denoiser.parameters())
-    opt      = optim.Adam(params, lr=lr)
+    opt       = optim.Adam(params, lr=lr)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs, eta_min=1e-5)
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1, ignore_index=0)
 
     best_val = float('inf')
     for epoch in range(1, epochs + 1):
         encoder.train(); denoiser.train()
         tr_loss = 0.0
-        for spec, seq, _ in train_dl:
-            spec, seq = spec.to(device), seq.to(device)
+        for spec, seq, mass in train_dl:
+            spec, seq, mass = spec.to(device), seq.to(device), mass.to(device)
             B = seq.shape[0]
 
             # NOVEL #4: spectral noise augmentation
@@ -301,11 +307,27 @@ def train_diffusion(mzml_paths, xlsx_paths, checkpoint_dir='checkpoints',
             t      = torch.randint(0, T_STEPS, (B,), device=device)
             xt     = q_sample(seq, t)
             logits = denoiser(xt, t, encoder(spec))
-            loss   = criterion(logits.reshape(-1, VOCAB_SIZE), seq.reshape(-1))
+            ce_loss = criterion(logits.reshape(-1, VOCAB_SIZE), seq.reshape(-1))
+
+            # Option A: mass consistency loss — expected sequence mass vs precursor
+            valid_m = mass > 1.0
+            if valid_m.any():
+                mass_lut = RESIDUE_MASS.to(device)
+                probs       = F.softmax(logits, dim=-1)                       # (B, L, V)
+                exp_mass    = (probs * mass_lut).sum(-1)                      # (B, L)
+                is_aa_soft  = 1.0 - probs[:, :, :3].sum(-1)                  # P(AA)
+                pred_mass   = (exp_mass * is_aa_soft).sum(-1) + WATER_MASS   # (B,)
+                # Relative L1 — dimensionless, ~0.05–0.20 at start of training
+                mass_loss   = ((pred_mass[valid_m] - mass[valid_m]).abs()
+                               / mass[valid_m]).mean()
+                loss = ce_loss + MASS_LOSS_WEIGHT * mass_loss
+            else:
+                loss = ce_loss
+
             opt.zero_grad(); loss.backward()
             nn.utils.clip_grad_norm_(params, 1.0)
             opt.step()
-            tr_loss += loss.item() * B
+            tr_loss += ce_loss.item() * B
 
         encoder.eval(); denoiser.eval()
         va_loss = 0.0
@@ -328,6 +350,8 @@ def train_diffusion(mzml_paths, xlsx_paths, checkpoint_dir='checkpoints',
                         'denoiser': denoiser.state_dict()}, path)
             print(f"  Saved {path}")
 
+        scheduler.step()
+
         if va_avg < best_val:
             best_val = va_avg
             torch.save({'epoch': epoch, 'encoder': encoder.state_dict(),
@@ -338,6 +362,42 @@ def train_diffusion(mzml_paths, xlsx_paths, checkpoint_dir='checkpoints',
 
 
 # ── Inference ──────────────────────────────────────────────────────────────────
+def _seq_mass(seq: str) -> float:
+    """Monoisotopic neutral mass of a peptide string (residues + H2O)."""
+    return sum(_MONO_MASSES[VOCAB.index(c)] for c in seq if c in VOCAB) + WATER_MASS
+
+
+def mass_correct_sequence(seq: str, precursor_mass: float,
+                           tol: float = 0.05) -> str:
+    """
+    Option B: post-hoc mass correction.
+    If the predicted sequence mass is outside tol Da of precursor_mass,
+    try all single-position amino acid swaps and keep the one that minimises
+    the mass error. Returns seq unchanged when precursor_mass is unknown (≤1 Da)
+    or already within tolerance.
+    """
+    if precursor_mass <= 1.0 or not seq:
+        return seq
+    current_delta = abs(_seq_mass(seq) - precursor_mass)
+    if current_delta <= tol:
+        return seq
+
+    best_seq, best_delta = seq, current_delta
+    for pos in range(len(seq)):
+        for aa in VOCAB:
+            if aa == seq[pos]:
+                continue
+            candidate = seq[:pos] + aa + seq[pos + 1:]
+            delta = abs(_seq_mass(candidate) - precursor_mass)
+            if delta < best_delta:
+                best_delta, best_seq = delta, candidate
+
+    # Only apply if the correction actually achieves tolerance — a swap that
+    # merely reduces the error without reaching tolerance swaps a correct AA
+    # for a wrong one more often than not.
+    return best_seq if best_delta <= tol else seq
+
+
 def decode_tokens(tokens) -> str:
     result = []
     for tok in tokens:
@@ -351,20 +411,18 @@ def decode_tokens(tokens) -> str:
 @torch.no_grad()
 def generate_sequences(encoder, denoiser, spectra, precursor_masses,
                         n_candidates: int = 5, T_sample: float = 0.8,
-                        t_infer: int = 100, device=None, use_gate: bool = True):
+                        t_infer: int = 100, device=None, use_gate: bool = False):
     """
-    One-shot inference: run denoiser once at t=t_infer with random noise,
-    apply entropy-adaptive gate (NOVEL #1), argmax → sequence.
-    Repeated n_candidates times with different noise draws.
-
-    Iterative chains collapsed for this model because re-noising injected
-    EOS/PAD tokens that the model locked in at t→0. One-shot at t=100
-    consistently produces non-empty, meaningful sequences.
+    Iterative reverse diffusion over _INFER_STEPS (20 accelerated steps T→0).
+    PAD/EOS are allowed at intermediate steps so the model sees distributions
+    consistent with its training (q_sample of real sequences with EOS structure).
+    The mass gate is disabled by default: the model was not trained with a mass
+    loss, so gating on non-zero precursor masses suppresses all amino acids.
 
     Returns:
         sequences:    list[N] of list[n_candidates] strings
-        spectral_lps: list[N] of list[n_candidates] floats  (log-prob at t=0)
-        gate_confs:   list[N] of list[n_candidates] floats  (mean gate_confidence)
+        spectral_lps: list[N] of list[n_candidates] floats
+        gate_confs:   list[N] of list[n_candidates] floats (1.0 = gate not applied)
     """
     if device is None:
         device = next(encoder.parameters()).device
@@ -379,40 +437,37 @@ def generate_sequences(encoder, denoiser, spectra, precursor_masses,
     spectral_lps = [[] for _ in range(N)]
     gate_confs   = [[] for _ in range(N)]
 
-    t_vec  = torch.full((N,), t_infer, dtype=torch.long, device=device)
-    t_zero = torch.zeros(N, dtype=torch.long, device=device)
+    n_steps = len(_INFER_STEPS)
 
     for _ in range(n_candidates):
-        # Random noise input — different each candidate draw
+        # Start from pure categorical noise
         xt = torch.randint(0, VOCAB_SIZE, (N, SEQ_LEN), device=device)
 
-        # Predict x0 — NO gate here: at t=100 the argmax has arbitrary total
-        # mass, so the coordinate-wise gate would zero out all amino acids.
-        x0_hat = denoiser(xt, t_vec, context).argmax(-1)   # (N, L)
+        for step_idx, t_cur in enumerate(_INFER_STEPS):
+            t_vec  = torch.full((N,), t_cur, dtype=torch.long, device=device)
+            logits = denoiser(xt, t_vec, context)   # (N, L, V)
 
-        # NOVEL #1: entropy-adaptive gate applied at t=0 where x0_hat is a
-        # real peptide sequence with a well-defined total mass.
-        # gate_confidence = fraction of positions where tight 0.02 Da gate held.
-        logits_0 = denoiser(x0_hat, t_zero, context)                 # (N, L, V)
-        if use_gate:
-            logits_0_gated, gc = entropy_adaptive_gate(logits_0, mass_t)
-        else:
-            logits_0_gated = logits_0
-            gc = torch.ones(N, SEQ_LEN, device=device)  # ablation: gate disabled
+            is_final = (step_idx == n_steps - 1)
 
-        # Use gated argmax as the final sequence — ensures mass consistency.
-        # Score = log-prob of the gated argmax under the gated distribution
-        # (argmax always has the highest log-prob, so this is always finite).
-        x0_final = logits_0_gated.argmax(-1)                            # (N, L)
-        log_fin  = F.log_softmax(logits_0_gated, dim=-1)
-        sp_lp    = log_fin.gather(-1, x0_final.unsqueeze(-1)).squeeze(-1)
-        aa_mask  = (x0_final >= 3).float()
-        sp_lp    = (sp_lp * aa_mask).sum(-1) / aa_mask.sum(-1).clamp(min=1)
+            if not is_final:
+                x0_hat = logits.argmax(-1)           # (N, L) — EOS/PAD allowed
+                t_next     = _INFER_STEPS[step_idx + 1]
+                t_next_vec = torch.full((N,), t_next, dtype=torch.long, device=device)
+                xt = q_sample(x0_hat, t_next_vec)
+            else:
+                # Final step at t=0: argmax directly (no gate — model lacks mass loss)
+                gc       = torch.ones(N, SEQ_LEN, device=device)
+                x0_final = logits.argmax(-1)                            # (N, L)
+                log_fin  = F.log_softmax(logits, dim=-1)
+                sp_lp    = log_fin.gather(-1, x0_final.unsqueeze(-1)).squeeze(-1)
+                aa_mask  = (x0_final >= 3).float()
+                sp_lp    = (sp_lp * aa_mask).sum(-1) / aa_mask.sum(-1).clamp(min=1)
 
-        for i, seq in enumerate(x0_final.cpu().numpy()):
-            sequences[i].append(decode_tokens(seq))
-            spectral_lps[i].append(float(sp_lp[i].cpu()))
-            gate_confs[i].append(float(gc[i].mean().cpu()))
+                for i, seq in enumerate(x0_final.cpu().numpy()):
+                    decoded = decode_tokens(seq)
+                    sequences[i].append(decoded)
+                    spectral_lps[i].append(float(sp_lp[i].cpu()))
+                    gate_confs[i].append(float(gc[i].mean().cpu()))
 
     return sequences, spectral_lps, gate_confs
 
@@ -434,9 +489,9 @@ def save_predictions(sequences, spectral_lps, gate_confs,
 
 # ── Evaluation ─────────────────────────────────────────────────────────────────
 def aa_recall(pred: str, true: str) -> float:
-    from collections import Counter
-    p, t = Counter(pred), Counter(true)
-    return sum((p & t).values()) / max(len(true), 1)
+    """Positional recall: fraction of positions where pred[i] == true[i]."""
+    matches = sum(a == b for a, b in zip(pred, true))
+    return matches / max(len(true), 1)
 
 
 def evaluate_aa_recall(encoder, denoiser, X_test, y_test, masses_test,

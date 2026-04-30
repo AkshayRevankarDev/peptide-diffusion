@@ -5,3 +5,20 @@
 *.pdf
 !report/checkpoint2_report.pdf
 __pycache__/
+**/__pycache__/
+*.pyc
+
+# Large binary data — too big for GitHub
+data/raw/
+checkpoints/*.pt
+checkpoints/seed_*/
+checkpoints/retrain_seed_*/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+
+# OS
+.DS_Store

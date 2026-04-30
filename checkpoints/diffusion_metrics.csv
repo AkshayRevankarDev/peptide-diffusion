@@ -1,5 +1,8 @@
-Model,AA Recall %,Pep Acc %
-LSTM Baseline,31.51,2.68
-GRU Ablation,44.3,6.7
-Diffusion (CP2),73.4358851187325,19.279661016949152
-InstaNovo (ref),72.9,33.1
+Model,AA Recall %,Pep Acc %,Metric,Notes
+LSTM Baseline,31.51,2.68,positional,teacher-forced eval
+GRU Ablation,44.30,6.70,positional,teacher-forced eval
+Diffusion seed 0,43.56,11.23,positional,mass loss + iterative + cosine LR
+Diffusion seed 1,39.43,7.63,positional,mass loss + iterative + cosine LR
+Diffusion seed 2,43.41,9.11,positional,mass loss + iterative + cosine LR
+Diffusion mean,42.13,9.32,positional,42.13 +/- 2.34% AA | 9.32 +/- 1.81% pep
+InstaNovo (ref),72.9,33.1,positional,beam search

@@ -23,9 +23,9 @@ VOCAB = list("ACDEFGHIKLMNPQRSTVWY")
 
 # ── AA recall helper ──────────────────────────────────────────────────────────
 def _aa_recall(pred: str, true: str) -> float:
-    from collections import Counter
-    p, t = Counter(str(pred)), Counter(str(true))
-    return sum((p & t).values()) / max(len(true), 1)
+    """Positional recall: fraction of positions where pred[i] == true[i]."""
+    matches = sum(a == b for a, b in zip(str(pred), str(true)))
+    return matches / max(len(true), 1)
 
 
 # ── Load and merge prediction tables ─────────────────────────────────────────
@@ -297,8 +297,8 @@ def make_comparison_bar(metrics_csv: str,
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 def run_ensemble(diffusion_csv:  str = "results/diffusion_predictions.csv",
                  esm2_csv:       str = "results/esm2_scores.csv",
-                 lstm_csv:       str = "results/lstm_predictions.csv",
-                 gru_csv:        str = "results/gru_predictions.csv",
+                 lstm_csv:       str = None,
+                 gru_csv:        str = None,
                  metrics_csv:    str = "checkpoints/diffusion_metrics_full.csv",
                  out_csv:        str = "results/ensemble_predictions.csv",
                  figures_dir:    str = "figures",
