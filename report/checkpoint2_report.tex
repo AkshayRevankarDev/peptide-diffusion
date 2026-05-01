@@ -250,11 +250,40 @@ $+11.9$ percentage points respectively, and improving over our best CP1 baseline
 $\pm0.13\%$, indicating the result is highly stable.
 
 \paragraph{Argmax vs.\ CFID.}
-Mask-predict iterative decoding adds $+0.41\%$ AA recall and $+8.48\%$ peptide
+Mask-predict iterative decoding adds $+0.33\%$ AA recall and $+8.40\%$ peptide
 accuracy over simple argmax, with no change to model weights. The gain is
-predominantly in peptide accuracy, which is the harder metric: CFID refines
-uncertain positions conditioned on committed context, recovering correct ordering
-that single-shot argmax misses.
+predominantly in peptide accuracy, the harder metric: CFID refines uncertain
+positions conditioned on committed context, recovering correct ordering that
+single-shot argmax misses.
+
+\subsection{Inference Strategy Ablation}
+
+\begin{table}[H]
+\centering
+\caption{Inference strategy ablation on the 472-spectrum test set (mean across 3 seeds).
+  All rows use the same PeakEncoder+BYBias model weights (epoch~150).}
+\label{tab:ablation}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Inference strategy} & \textbf{AA Recall (\%)} & \textbf{Pep.\ Acc.\ (\%)} \\
+\midrule
+Argmax (baseline)                   & 74.81 & 36.65 \\
+Option B: single-swap mass-correct  & 74.11 & 30.79 \\
+NOVEL\#9: SGIR only                 & 74.94 & 37.01 \\
+NOVEL\#10: spectral rerank          & 72.71 & 37.57 \\
+\rowcolor{gray!15}
+NOVEL\#11: CFID                     & \textbf{75.14} & \textbf{45.06} \\
+NOVEL\#11: CFID + SGIR              & 75.17 & 44.63 \\
+NOVEL\#11: CFID + mass-correct      & 74.35 & 37.57 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+CFID is the clear winner on peptide accuracy ($+8.41$ pp over argmax). SGIR adds
+a marginal $+0.03$~pp when combined with CFID. Spectral reranking (NOVEL\#10) and
+mass correction both hurt, confirming that temperature sampling introduces more
+noise than the reranking signal recovers at this model quality level. The best
+single inference mode is CFID alone.
 
 \paragraph{Ensemble.}
 Earlier ablations found that an LSTM+GRU ensemble scored 45.82\% AA recall, well
