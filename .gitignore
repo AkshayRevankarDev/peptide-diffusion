@@ -4,6 +4,7 @@
 # PDFs ignored by default — force-track the report explicitly
 *.pdf
 !report/checkpoint2_report.pdf
+!report/report.pdf
 __pycache__/
 **/__pycache__/
 *.pyc

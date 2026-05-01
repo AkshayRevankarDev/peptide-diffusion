@@ -505,7 +505,7 @@ overfitting despite 200 training epochs on the 472-spectrum dataset.
 \end{table}
 
 We use ESM-2 (8M, \texttt{facebook/esm2\_t6\_8M\_UR50D})~\citep{lin2023evolutionary} to compute
-pseudo-perplexity via simultaneous all-position masking (Kantroo 2024):
+pseudo-perplexity via simultaneous all-position masking~\citep{kantroo2024}:
 \begin{equation}
   \mathrm{PPL}(\vect{a}) = \exp\!\left(-\frac{1}{L}\sum_{i=1}^{L}
     \log p_{\phi}(a_i \mid \vect{a}_{\setminus i})\right),
@@ -585,12 +585,14 @@ sensitivity to lucky beam candidates.
 \section{Related Work}
 
 \textbf{De novo sequencing.}
-Casanovo~\citep{casanovo2023} applies an autoregressive Transformer and achieves strong results
-on the nine-species benchmark.
-InstaNovo~\citep{instanovo2024} adds a diffusion-based refinement step and currently represents
-published SOTA.
-Our model differs by using pure absorbing diffusion with self-conditioning rather than
-autoregressive priming, enabling richer global-context modeling.
+DeepNovo~\citep{tran2017deepnovo} first applied deep sequence-to-sequence learning to MS/MS spectra.
+Casanovo~\citep{casanovo2023} introduced a Transformer encoder-decoder with strong multi-species results.
+InstaNovo~\citep{instanovo2024} adds a diffusion-based refinement step and is the current published SOTA.
+Concurrent non-autoregressive work includes $\pi$-PrimeNovo~\citep{zhang2025primenovo}, which achieves
+89$\times$ faster inference via CTC loss.
+NovoBench~\citep{zhou2024novobench} provides systematic cross-model comparison.
+Our model uses pure absorbing diffusion with self-conditioning, enabling richer global-context
+modeling without autoregressive priming.
 
 \textbf{Discrete diffusion.}
 \citet{austin2021structured} introduce absorbing diffusion for text; \citet{hoogeboom2021argmax}
@@ -638,10 +640,11 @@ Hoogeboom, E., Nielsen, D., Jaini, P., Forré, P., Welling, M.\ (2021).
 Argmax flows and multinomial diffusion.
 \textit{NeurIPS}.
 
-\bibitem[Abil et~al.(2024)]{instanovo2024}
-Abil, Z. et~al.\ (2024).
-InstaNovo: Transformers enable accurate, proteome-scale de novo peptide sequencing.
-\textit{bioRxiv}.
+\bibitem[Eloff et~al.(2025)]{instanovo2024}
+Eloff, K. et~al.\ (2025).
+InstaNovo enables diffusion-powered de novo peptide sequencing in large-scale
+proteomics experiments.
+\textit{Nature Machine Intelligence}, 7, 565--579.
 
 \bibitem[Jumper et~al.(2021)]{jumper2021highly}
 Jumper, J. et~al.\ (2021).
@@ -656,7 +659,28 @@ Evolutionary-scale prediction of atomic-level protein structure with a language 
 \bibitem[Yilmaz et~al.(2022)]{casanovo2023}
 Yilmaz, M., Fondrie, W.\,E., Bittremieux, W., Oh, S., Noble, W.\,S.\ (2022).
 De novo mass spectrometry peptide sequencing with a transformer model.
-\textit{ICML}.
+\textit{ICML}. (Journal version: \textit{Nature Communications}, 2024.)
+
+\bibitem[Kantroo et~al.(2024)]{kantroo2024}
+Kantroo, M., Tauber, J., Bhatt, D.\ (2024).
+Pseudo-perplexity in one fell swoop for protein fitness estimation.
+\textit{PRX Life}.
+
+\bibitem[Tran et~al.(2017)]{tran2017deepnovo}
+Tran, N.\,H., Zhang, A., Xin, L., Shan, B., Li, M.\ (2017).
+De novo peptide sequencing by deep learning.
+\textit{Proceedings of the National Academy of Sciences}, 114(31), 8247--8252.
+
+\bibitem[Zhang et~al.(2025)]{zhang2025primenovo}
+Zhang, X. et~al.\ (2025).
+$\pi$-PrimeNovo: an accurate and efficient non-autoregressive deep network
+for de novo peptide sequencing.
+\textit{Nature Communications}, 16, 267.
+
+\bibitem[Zhou et~al.(2024)]{zhou2024novobench}
+Zhou, J. et~al.\ (2024).
+NovoBench: benchmarking de novo sequencing methods in proteomics.
+\textit{NeurIPS}.
 
 \end{thebibliography}
 }
