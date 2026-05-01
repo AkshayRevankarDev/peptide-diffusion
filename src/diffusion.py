@@ -107,9 +107,14 @@ def extract_top_peaks(mz_arr, int_arr, n_peaks: int = N_PEAKS,
     return out
 
 
-# ── Diffusion Schedule ─────────────────────────────────────────────────────────
-_betas      = torch.linspace(BETA_START, BETA_END, T_STEPS)
-_alpha_bars = torch.cumprod(1.0 - _betas, dim=0)
+# ── Diffusion Schedule (cosine, D3PM-style) ────────────────────────────────────
+# Cosine schedule absorbs tokens more uniformly than linear — avoids degenerate
+# distributions at very small or very large t.
+_t_cos   = torch.arange(T_STEPS + 1, dtype=torch.float) / T_STEPS
+_f       = torch.cos((_t_cos + 0.008) / 1.008 * math.pi / 2) ** 2
+_alpha_bars = (_f / _f[0]).clamp(min=1e-5)[1:]           # (T,) ᾱ_t ∈ (0,1]
+_betas      = (1 - _alpha_bars[1:] / _alpha_bars[:-1]).clamp(0, 0.999)
+_betas      = torch.cat([torch.tensor([1 - _alpha_bars[0]]), _betas])
 
 # Accelerated inference anchors: 20 evenly-spaced steps (avoids error accumulation)
 _INFER_STEPS = list(range(T_STEPS - 1, -1, -(T_STEPS // 20)))
@@ -158,6 +163,10 @@ def augment_peaks(peaks: torch.Tensor, p: float = AUG_PROB,
     # Intensity noise
     int_noise = torch.randn(B, K, device=peaks.device) * noise_frac
     out[:, :, 1] = (out[:, :, 1] + int_noise).clamp(0.0, 1.0)
+    # m/z jitter: ±0.01 normalised ≈ ±20 Da — simulates instrument calibration variance
+    mz_jitter = torch.randn(B, K, device=peaks.device) * 0.005
+    present = out[:, :, 0] > 0                                    # don't jitter padded peaks
+    out[:, :, 0] = (out[:, :, 0] + mz_jitter * present).clamp(0.0, 1.0)
     # Random peak dropout (10%)
     drop = torch.rand(B, K, device=peaks.device) < 0.10
     out[:, :, 0] = out[:, :, 0].masked_fill(drop, 0.0)
@@ -368,13 +377,20 @@ class BYBiasedDecoderLayer(nn.Module):
         # Cross-attention with optional B/Y pair bias and padding mask
         h = self.norm2(tgt)
         if by_bias is not None:
-            # by_bias: (B, L, K+1) → (B*nhead, L, K+1)
+            # by_bias: (B, L, K+1) → (B*nhead, L, K+1) float additive mask
             bias = (by_bias.unsqueeze(1)
                           .expand(-1, self.nhead, -1, -1)
                           .reshape(B * self.nhead, L, -1))
             bias = self.bias_scale * bias
-            h, _ = self.cross_attn(h, memory, memory, attn_mask=bias,
-                                   key_padding_mask=memory_key_padding_mask)
+            # Fuse padding mask into attn_mask as -inf (avoids bool/float mismatch)
+            if memory_key_padding_mask is not None:
+                pad_f = memory_key_padding_mask.float().masked_fill(
+                    memory_key_padding_mask, float('-inf'))          # (B, K+1)
+                pad_f = (pad_f.unsqueeze(1).unsqueeze(1)
+                              .expand(-1, self.nhead, L, -1)
+                              .reshape(B * self.nhead, L, -1))       # (B*h, L, K+1)
+                bias = bias + pad_f
+            h, _ = self.cross_attn(h, memory, memory, attn_mask=bias)
         else:
             h, _ = self.cross_attn(h, memory, memory,
                                    key_padding_mask=memory_key_padding_mask)
@@ -389,16 +405,21 @@ class TransformerDenoiser(nn.Module):
     """
     Bidirectional denoiser with peak-level cross-attention.
     memory: (B, K+1, d) sequence of peak embeddings from PeakEncoder.
-    B/Y ion pair bias (AF3-inspired) is injected into every cross-attention layer.
+    B/Y ion pair bias (AF3-inspired) injected into every cross-attention layer.
+    Self-conditioning: optionally accepts x0-hat from the previous denoising step
+    as an additional per-position embedding (MDLM-style, Sahoo 2024).
     """
     def __init__(self, vocab_size: int = VOCAB_SIZE, d_model: int = 512,
                  nhead: int = 8, dim_ff: int = 2048,
                  num_layers: int = 6, seq_len: int = SEQ_LEN):
         super().__init__()
-        self.token_emb = nn.Embedding(vocab_size, d_model, padding_idx=0)
-        self.pos_emb   = nn.Embedding(seq_len, d_model)
-        self.time_emb  = SinusoidalEmbedding(d_model)
-        self.layers    = nn.ModuleList([
+        self.token_emb    = nn.Embedding(vocab_size, d_model, padding_idx=0)
+        self.pos_emb      = nn.Embedding(seq_len, d_model)
+        self.time_emb     = SinusoidalEmbedding(d_model)
+        # Self-conditioning embedding — init to zero so it has no effect at epoch 0
+        self.self_cond_emb = nn.Embedding(vocab_size, d_model)
+        nn.init.zeros_(self.self_cond_emb.weight)
+        self.layers = nn.ModuleList([
             BYBiasedDecoderLayer(d_model, nhead, dim_ff)
             for _ in range(num_layers)
         ])
@@ -409,11 +430,15 @@ class TransformerDenoiser(nn.Module):
                 memory: torch.Tensor,
                 peaks: torch.Tensor | None = None,
                 precursor_masses: torch.Tensor | None = None,
-                memory_key_padding_mask: torch.Tensor | None = None) -> torch.Tensor:
+                memory_key_padding_mask: torch.Tensor | None = None,
+                self_cond: torch.Tensor | None = None) -> torch.Tensor:
         B, L = xt.shape
         pos  = torch.arange(L, device=xt.device).unsqueeze(0).expand(B, -1)
         x    = self.token_emb(xt) + self.pos_emb(pos)
         x    = x + self.time_emb(t).unsqueeze(1)
+        # Self-conditioning: add x0-hat embedding from previous step
+        if self_cond is not None:
+            x = x + self.self_cond_emb(self_cond)
         by_bias = (compute_by_pair_bias(xt, peaks, precursor_masses)
                    if peaks is not None and precursor_masses is not None
                    else None)
@@ -517,8 +542,17 @@ def train_diffusion(mzml_paths, xlsx_paths, checkpoint_dir='checkpoints',
             xt     = q_sample(seq, t)
             pks_aug = augment_peaks(pks)
             memory, pad_mask = encoder(pks_aug, mass)
+            # Self-conditioning (MDLM): 50% of steps, run a no-grad forward pass
+            # first to get x0-hat, then pass it as self_cond for the actual step.
+            self_cond = None
+            if torch.rand(1).item() < 0.5:
+                with torch.no_grad():
+                    sc_logits = denoiser(xt, t, memory, peaks=pks_aug,
+                                         precursor_masses=mass,
+                                         memory_key_padding_mask=pad_mask)
+                    self_cond = sc_logits.argmax(-1).detach()
             logits = denoiser(xt, t, memory, peaks=pks_aug, precursor_masses=mass,
-                              memory_key_padding_mask=pad_mask)
+                              memory_key_padding_mask=pad_mask, self_cond=self_cond)
             ce_loss = criterion(logits.reshape(-1, VOCAB_SIZE), seq.reshape(-1))
 
             # Mass consistency loss (relative L1 on expected sequence mass)
@@ -694,10 +728,11 @@ def mass_constrained_beam_search(logits_t0: torch.Tensor,
 def mask_predict_decode(logits_t0: torch.Tensor,
                         context: torch.Tensor,
                         denoiser: nn.Module,
-                        n_iter: int = 4,
+                        n_iter: int = 8,
                         peaks: torch.Tensor | None = None,
                         precursor_masses: torch.Tensor | None = None,
-                        memory_key_padding_mask: torch.Tensor | None = None) -> list:
+                        memory_key_padding_mask: torch.Tensor | None = None,
+                        self_cond: torch.Tensor | None = None) -> list:
     """
     NOVEL #11: Mask-Predict iterative decoding for the bidirectional denoiser.
     Correct counterpart to left-to-right beam search: keeps highest-confidence
@@ -736,13 +771,15 @@ def mask_predict_decode(logits_t0: torch.Tensor,
         # Re-denoise at t=0 — bidirectional model conditions on fixed positions
         logits_new = denoiser(xt_new, t_zero, context,
                               peaks=peaks, precursor_masses=precursor_masses,
-                              memory_key_padding_mask=memory_key_padding_mask)
+                              memory_key_padding_mask=memory_key_padding_mask,
+                              self_cond=self_cond)
         logits_new[..., MASK_TOK] = float('-inf')   # never output MASK
         probs_new  = F.softmax(logits_new, dim=-1)
 
-        # Update only uncertain positions
-        x0   = torch.where(uncertain_mask, logits_new.argmax(dim=-1), x0)
-        conf = torch.where(uncertain_mask, probs_new.max(dim=-1).values, conf)
+        # Update only uncertain positions; carry x0 forward as self_cond
+        x0        = torch.where(uncertain_mask, logits_new.argmax(dim=-1), x0)
+        conf      = torch.where(uncertain_mask, probs_new.max(dim=-1).values, conf)
+        self_cond = x0
 
     return [decode_tokens(x0[b].cpu().tolist()) for b in range(B)]
 
@@ -959,19 +996,22 @@ def generate_sequences(encoder, denoiser, spectra, precursor_masses,
 
     for cand_idx in range(n_candidates):
         # Start from fully masked sequence (absorbing diffusion: t=T ≡ all-MASK)
-        xt = torch.full((N, SEQ_LEN), MASK_TOK, dtype=torch.long, device=device)
+        xt        = torch.full((N, SEQ_LEN), MASK_TOK, dtype=torch.long, device=device)
+        self_cond = None   # self-conditioning: x0-hat from previous step
 
         for step_idx, t_cur in enumerate(_INFER_STEPS):
             t_vec  = torch.full((N,), t_cur, dtype=torch.long, device=device)
             logits = denoiser(xt, t_vec, context,
                               peaks=spec_t, precursor_masses=mass_t,
-                              memory_key_padding_mask=peak_pad_mask)   # (N, L, V)
+                              memory_key_padding_mask=peak_pad_mask,
+                              self_cond=self_cond)                     # (N, L, V)
             logits[..., MASK_TOK] = float('-inf')   # never predict MASK as output
 
             is_final = (step_idx == n_steps - 1)
 
             if not is_final:
-                x0_hat = logits.argmax(-1)           # (N, L) — EOS/PAD allowed
+                x0_hat    = logits.argmax(-1)        # (N, L) — EOS/PAD allowed
+                self_cond = x0_hat                   # carry forward for next step
                 t_next     = _INFER_STEPS[step_idx + 1]
                 t_next_vec = torch.full((N,), t_next, dtype=torch.long, device=device)
                 xt = q_sample(x0_hat, t_next_vec)
@@ -1009,10 +1049,11 @@ def generate_sequences(encoder, denoiser, spectra, precursor_masses,
                         spectral_lps[i].append(float(sp_lp[i].cpu()))
                         gate_confs[i].append(1.0)
                 elif use_cfid:
-                    # NOVEL #11: Mask-Predict iterative decoding
-                    cfid_seqs = mask_predict_decode(logits, context, denoiser, n_iter=4,
+                    # NOVEL #11: Mask-Predict iterative decoding (n_iter=8 for better convergence)
+                    cfid_seqs = mask_predict_decode(logits, context, denoiser, n_iter=8,
                                                     peaks=spec_t, precursor_masses=mass_t,
-                                                    memory_key_padding_mask=peak_pad_mask)
+                                                    memory_key_padding_mask=peak_pad_mask,
+                                                    self_cond=x0_hat)
                     for bi, seq in enumerate(cfid_seqs):
                         tok_ids = [(CHAR_TO_IDX.get(c, 0) if c in CHAR_TO_IDX else 0)
                                    for c in seq]
