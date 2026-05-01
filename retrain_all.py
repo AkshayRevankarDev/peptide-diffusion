@@ -12,18 +12,26 @@ for seed in [0, 1, 2]:
     enc, den, (X_te, y_te, m_te) = train_diffusion(
         mzml, xlsx,
         checkpoint_dir=os.path.join('checkpoints', f'seed_{seed}'),
-        epochs=50, seed=seed, lr=1e-3
+        epochs=200, seed=seed, lr=3e-4, batch_size=256
     )
+    # Argmax eval
     aa_rec, pep_acc = evaluate_aa_recall(
         enc, den, X_te, y_te, m_te,
-        batch_size=64, results_dir='results'
+        batch_size=256, results_dir='results'
     )
-    results.append((seed, aa_rec, pep_acc))
-    print(f"Seed {seed} FINAL | AA: {aa_rec:.2f}% | Pep: {pep_acc:.2f}%", flush=True)
+    # CFID eval
+    aa_cfid, pep_cfid = evaluate_aa_recall(
+        enc, den, X_te, y_te, m_te,
+        batch_size=256, results_dir='results', use_cfid=True
+    )
+    results.append((seed, aa_rec, pep_acc, aa_cfid, pep_cfid))
+    print(f"Seed {seed} | argmax AA {aa_rec:.2f}% Pep {pep_acc:.2f}%"
+          f" | CFID AA {aa_cfid:.2f}% Pep {pep_cfid:.2f}%", flush=True)
 
 print("\n=== ALL SEEDS ===")
-aas  = [r[1] for r in results]
-peps = [r[2] for r in results]
-for s, a, p in results:
-    print(f"  seed {s}: AA {a:.2f}%  Pep {p:.2f}%")
-print(f"  Mean: AA {np.mean(aas):.2f} +/- {np.std(aas):.2f}%  |  Pep {np.mean(peps):.2f} +/- {np.std(peps):.2f}%")
+for s, aa, pep, aa_c, pep_c in results:
+    print(f"  seed {s}: argmax {aa:.2f}/{pep:.2f}  CFID {aa_c:.2f}/{pep_c:.2f}")
+aas  = [r[1] for r in results]; peps  = [r[2] for r in results]
+aasc = [r[3] for r in results]; pepsc = [r[4] for r in results]
+print(f"  Argmax mean: AA {np.mean(aas):.2f}±{np.std(aas):.2f}  Pep {np.mean(peps):.2f}±{np.std(peps):.2f}")
+print(f"  CFID   mean: AA {np.mean(aasc):.2f}±{np.std(aasc):.2f}  Pep {np.mean(pepsc):.2f}±{np.std(pepsc):.2f}")

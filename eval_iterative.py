@@ -50,7 +50,8 @@ for ckpt_path in seed_dirs:
     encoder, denoiser = load_checkpoint(ckpt_path, device=device)
     aa_rec, pep_acc = evaluate_aa_recall(
         encoder, denoiser, X_te, y_te, m_te,
-        batch_size=64, results_dir='results', device=device, use_gate=True
+        batch_size=64, results_dir='results', device=device,
+        use_gate=False
     )
     seed = os.path.basename(os.path.dirname(ckpt_path)).replace('seed_', '')
     results.append({'seed': seed, 'AA Recall %': aa_rec, 'Pep Acc %': pep_acc})
