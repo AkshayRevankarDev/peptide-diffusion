@@ -39,8 +39,12 @@ X_te   = X[te_idx]; y_te = y[te_idx]; m_te = masses[te_idx]
 rp_te  = [rps[i] for i in te_idx]
 print(f"Test spectra: {len(X_te)}")
 
-device     = torch.device('cpu')
-ckpt_paths = sorted(glob.glob('checkpoints/seed_*/diffusion_best.pt'))
+device     = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# Prefer diffusion_final.pt (last epoch, best AA recall) over diffusion_best.pt
+# (best val CE loss, which correlates poorly with positional AA recall).
+ckpt_paths = sorted(glob.glob('checkpoints/seed_*/diffusion_final.pt'))
+if not ckpt_paths:
+    ckpt_paths = sorted(glob.glob('checkpoints/seed_*/diffusion_best.pt'))
 if not ckpt_paths:
     ckpt_paths = ['checkpoints/diffusion_best.pt']
 
@@ -69,7 +73,7 @@ for ckpt_path in ckpt_paths:
         print(f"  [{label}]")
         aa_rec, pep_acc = evaluate_aa_recall(
             encoder, denoiser, X_te, y_te, m_te,
-            batch_size=32, results_dir='results', device=device,
+            batch_size=256, results_dir='results', device=device,
             raw_peaks=rp_te if kwargs.get('use_sgir') else None,
             **kwargs
         )

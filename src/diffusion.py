@@ -571,6 +571,12 @@ def train_diffusion(mzml_paths, xlsx_paths, checkpoint_dir='checkpoints',
                         'denoiser': denoiser.state_dict()},
                        os.path.join(checkpoint_dir, 'diffusion_best.pt'))
 
+    # Always save the last epoch — AA recall peaks here, not at best val CE loss
+    torch.save({'epoch': epochs, 'encoder': encoder.state_dict(),
+                'denoiser': denoiser.state_dict()},
+               os.path.join(checkpoint_dir, 'diffusion_final.pt'))
+    print(f"  Saved diffusion_final.pt (epoch {epochs})")
+
     return encoder, denoiser, (peaks[te], y[te], masses[te])
 
 
