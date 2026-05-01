@@ -15,4 +15,12 @@ PeakEncoder+BYBias seed 0 (CFID),75.12,45.13,positional,PeakEncoder+BYBias+absor
 PeakEncoder+BYBias seed 1 (CFID),75.37,47.03,positional,PeakEncoder+BYBias+absorbing+mask-predict 150ep
 PeakEncoder+BYBias seed 2 (CFID),75.08,42.80,positional,PeakEncoder+BYBias+absorbing+mask-predict 150ep
 PeakEncoder+BYBias mean (CFID),75.19,44.99,positional,75.19 +/- 0.13% AA | 44.99 +/- 1.73% pep
+V2+SelfCond seed 0 (argmax),76.36,58.47,positional,+self-cond+cosine+AdamW+200ep
+V2+SelfCond seed 1 (argmax),76.31,51.48,positional,+self-cond+cosine+AdamW+200ep
+V2+SelfCond seed 2 (argmax),76.24,62.50,positional,+self-cond+cosine+AdamW+200ep
+V2+SelfCond mean (argmax),76.30,57.49,positional,76.30 +/- 0.05% AA | 57.49 +/- 4.55% pep
+V2+SelfCond seed 0 (CFID),76.08,60.59,positional,+self-cond+cosine+AdamW+200ep+CFID-n8
+V2+SelfCond seed 1 (CFID),76.04,55.08,positional,+self-cond+cosine+AdamW+200ep+CFID-n8
+V2+SelfCond seed 2 (CFID),75.95,63.14,positional,+self-cond+cosine+AdamW+200ep+CFID-n8
+V2+SelfCond mean (CFID),76.02,59.60,positional,76.02 +/- 0.05% AA | 59.60 +/- 3.36% pep
 InstaNovo (ref),72.9,33.1,positional,beam search
