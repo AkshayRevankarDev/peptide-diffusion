@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peptide Diffusion — De Novo Sequencing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Lora:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --paper:#f5f2ec;
+  --paper2:#edeae2;
+  --ink:#111008;
+  --ink2:#3d3a30;
+  --ink3:#7a7668;
+  --teal:#0d9488;
+  --teal2:#0f766e;
+  --amber:#b45309;
+  --red:#b91c1c;
+  --border:#d4cfc4;
+  --serif:'Playfair Display',Georgia,serif;
+  --body:'Lora',Georgia,serif;
+  --mono:'JetBrains Mono',monospace;
+}
+html{scroll-behavior:smooth;font-size:16px}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);line-height:1.7;overflow-x:hidden}
+
+/* GRAIN TEXTURE */
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity:0.6;
+}
+
+/* NAV */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 2.5rem;height:56px;
+  background:rgba(245,242,236,0.92);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.nav-title{font-family:var(--serif);font-size:0.9rem;font-weight:700;color:var(--ink);letter-spacing:0.02em}
+.nav-links{display:flex;gap:2rem}
+.nav-links a{font-family:var(--mono);font-size:0.7rem;color:var(--ink3);text-decoration:none;letter-spacing:0.08em;text-transform:uppercase;transition:color 0.2s}
+.nav-links a:hover{color:var(--teal)}
+.nav-tag{font-family:var(--mono);font-size:0.65rem;background:var(--teal);color:white;padding:0.2rem 0.6rem;border-radius:3px;letter-spacing:0.08em}
+
+/* HERO */
+#hero{
+  position:relative;z-index:1;
+  min-height:100vh;
+  display:grid;grid-template-rows:1fr auto;
+  padding:6rem 0 0;
+  border-bottom:1px solid var(--border);
+}
+.hero-inner{
+  display:grid;grid-template-columns:1fr 1fr;
+  max-width:1200px;margin:0 auto;width:100%;
+  padding:4rem 2.5rem 3rem;gap:4rem;align-items:center;
+}
+.hero-eyebrow{
+  font-family:var(--mono);font-size:0.7rem;letter-spacing:0.15em;text-transform:uppercase;
+  color:var(--teal);margin-bottom:1.5rem;display:flex;align-items:center;gap:0.75rem;
+}
+.hero-eyebrow::before{content:'';width:28px;height:1px;background:var(--teal);display:block}
+h1{
+  font-family:var(--serif);font-size:clamp(2.8rem,5vw,4.2rem);
+  font-weight:900;line-height:1.05;letter-spacing:-0.02em;
+  color:var(--ink);margin-bottom:1.5rem;
+}
+h1 em{font-style:italic;color:var(--teal)}
+.hero-desc{font-size:1.05rem;color:var(--ink2);line-height:1.8;margin-bottom:2rem}
+.hero-team{
+  display:flex;align-items:center;gap:0.75rem;
+  font-family:var(--mono);font-size:0.72rem;color:var(--ink3);letter-spacing:0.03em;
+  border-top:1px solid var(--border);padding-top:1.5rem;
+}
+.team-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);flex-shrink:0}
+
+/* HERO RIGHT — stat cards */
+.hero-stats{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.hstat{
+  background:white;border:1px solid var(--border);border-radius:8px;
+  padding:1.5rem;position:relative;overflow:hidden;
+}
+.hstat::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:var(--teal);
+}
+.hstat.amber::after{background:var(--amber)}
+.hstat.red::after{background:var(--red)}
+.hstat.dark{background:var(--ink);border-color:var(--ink)}
+.hstat.dark::after{background:var(--teal)}
+.hstat-num{
+  font-family:var(--mono);font-size:2.4rem;font-weight:700;
+  color:var(--teal);line-height:1;margin-bottom:0.4rem;
+}
+.hstat.amber .hstat-num{color:var(--amber)}
+.hstat.red .hstat-num{color:#dc2626}
+.hstat.dark .hstat-num{color:white}
+.hstat-label{font-family:var(--mono);font-size:0.68rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink3)}
+.hstat.dark .hstat-label{color:rgba(255,255,255,0.5)}
+.hstat-sub{font-size:0.8rem;color:var(--ink3);margin-top:0.3rem}
+.hstat.dark .hstat-sub{color:rgba(255,255,255,0.4)}
+.hstat-gain{
+  display:inline-block;font-family:var(--mono);font-size:0.7rem;
+  background:rgba(13,148,136,0.1);color:var(--teal);
+  padding:0.15rem 0.5rem;border-radius:3px;margin-top:0.4rem;
+}
+
+/* HERO BOTTOM BAR */
+.hero-bar{
+  background:var(--ink);color:white;
+  display:flex;align-items:center;justify-content:center;gap:3rem;
+  padding:1rem 2.5rem;font-family:var(--mono);font-size:0.72rem;letter-spacing:0.05em;
+  overflow:hidden;position:relative;
+}
+.hero-bar-item{display:flex;align-items:center;gap:0.5rem;white-space:nowrap}
+.hero-bar-item strong{color:var(--teal)}
+.bar-sep{color:rgba(255,255,255,0.2)}
+
+/* SECTION STRUCTURE */
+.section{position:relative;z-index:1;padding:5rem 2.5rem;max-width:1200px;margin:0 auto}
+.section-divider{border:none;border-top:1px solid var(--border);max-width:1200px;margin:0 auto}
+.eyebrow{
+  font-family:var(--mono);font-size:0.68rem;letter-spacing:0.15em;text-transform:uppercase;
+  color:var(--teal);margin-bottom:1rem;display:flex;align-items:center;gap:0.6rem;
+}
+.eyebrow::before{content:'';width:20px;height:1px;background:var(--teal)}
+h2{font-family:var(--serif);font-size:clamp(1.8rem,3.5vw,2.8rem);font-weight:900;line-height:1.1;letter-spacing:-0.02em;color:var(--ink)}
+h2 em{font-style:italic;color:var(--teal)}
+.section-intro{font-size:1.05rem;color:var(--ink2);max-width:680px;margin-top:1rem;line-height:1.8}
+
+/* WHAT SECTION — 3 col explainer */
+.explainer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);margin-top:3rem;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.exp-cell{background:var(--paper);padding:2rem;position:relative}
+.exp-cell:hover{background:white;z-index:1}
+.exp-num{font-family:var(--mono);font-size:3rem;font-weight:700;color:var(--border);line-height:1;margin-bottom:0.5rem;letter-spacing:-0.04em}
+.exp-title{font-family:var(--serif);font-size:1.1rem;font-weight:700;color:var(--ink);margin-bottom:0.5rem}
+.exp-body{font-size:0.875rem;color:var(--ink2);line-height:1.7}
+
+/* ARCHITECTURE */
+.arch-pipeline{
+  display:flex;align-items:stretch;gap:0;margin-top:2.5rem;
+  border:1px solid var(--border);border-radius:8px;overflow:hidden;
+}
+.arch-step{
+  flex:1;padding:1.5rem;border-right:1px solid var(--border);
+  background:white;position:relative;transition:background 0.2s;
+}
+.arch-step:last-child{border-right:none}
+.arch-step:hover{background:var(--paper)}
+.arch-step-num{font-family:var(--mono);font-size:0.65rem;color:var(--teal);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem}
+.arch-step-title{font-family:var(--serif);font-size:1rem;font-weight:700;color:var(--ink);margin-bottom:0.4rem}
+.arch-step-body{font-size:0.8rem;color:var(--ink2);line-height:1.6}
+.arch-step-eq{
+  margin-top:0.75rem;font-family:var(--mono);font-size:0.72rem;
+  background:var(--paper2);padding:0.4rem 0.6rem;border-radius:4px;
+  color:var(--ink2);border-left:2px solid var(--teal);word-break:break-all;
+}
+.arch-gain{
+  display:inline-block;margin-top:0.5rem;font-family:var(--mono);
+  font-size:0.68rem;color:var(--teal);font-weight:700;
+}
+
+/* DIFFUSION DEMO */
+.demo-box{
+  background:white;border:1px solid var(--border);border-radius:8px;
+  padding:2.5rem;margin-top:2.5rem;
+}
+.demo-label{font-family:var(--mono);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:1.5rem}
+.demo-seq{display:flex;gap:6px;flex-wrap:wrap;min-height:52px;align-items:center;margin-bottom:1.5rem}
+.aa{
+  width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:0.9rem;font-weight:700;
+  border-radius:4px;border:1px solid var(--border);
+  transition:all 0.4s cubic-bezier(0.4,0,0.2,1);
+  background:white;color:var(--ink);
+}
+.aa.masked{
+  background:var(--paper2);border-color:var(--border);
+  color:var(--ink3);font-size:1.1rem;
+}
+.aa.uncertain{
+  background:rgba(180,83,9,0.06);border-color:rgba(180,83,9,0.3);
+  color:var(--amber);animation:flicker 0.7s ease-in-out infinite;
+}
+.aa.revealed{
+  background:rgba(13,148,136,0.06);border-color:rgba(13,148,136,0.4);
+  color:var(--teal);
+}
+.aa.final{
+  background:rgba(13,148,136,0.1);border-color:var(--teal);
+  color:var(--teal2);box-shadow:0 0 0 3px rgba(13,148,136,0.1);
+}
+@keyframes flicker{0%,100%{opacity:1}50%{opacity:0.4}}
+.demo-progress{display:flex;gap:4px;margin-bottom:1rem}
+.dprog{width:6px;height:6px;border-radius:50%;background:var(--border);transition:all 0.3s}
+.dprog.active{background:var(--amber);transform:scale(1.3)}
+.dprog.done{background:var(--teal)}
+.demo-step-info{font-size:0.85rem;color:var(--ink3);min-height:1.4em}
+.demo-controls{display:flex;gap:0.75rem;margin-top:1.25rem;flex-wrap:wrap}
+.btn{
+  font-family:var(--mono);font-size:0.72rem;letter-spacing:0.05em;text-transform:uppercase;
+  padding:0.55rem 1.25rem;border-radius:4px;cursor:pointer;transition:all 0.2s;border:1px solid transparent;
+}
+.btn-primary{background:var(--teal);color:white;border-color:var(--teal)}
+.btn-primary:hover{background:var(--teal2)}
+.btn-outline{background:transparent;border-color:var(--border);color:var(--ink2)}
+.btn-outline:hover{border-color:var(--teal);color:var(--teal);background:rgba(13,148,136,0.04)}
+
+/* RESULTS — PROGRESSION CHART */
+.prog-chart{margin-top:2.5rem}
+.prog-row{
+  display:grid;grid-template-columns:200px 1fr 80px;align-items:center;
+  gap:1rem;margin-bottom:0.6rem;
+}
+.prog-name{font-family:var(--mono);font-size:0.72rem;color:var(--ink2);text-align:right;letter-spacing:0.02em}
+.prog-bar-bg{background:var(--paper2);border-radius:2px;height:14px;overflow:hidden;position:relative}
+.prog-bar{height:100%;border-radius:2px;width:0;transition:width 1.4s cubic-bezier(0.4,0,0.2,1);display:flex;align-items:center;justify-content:flex-end;padding-right:4px}
+.prog-bar span{font-family:var(--mono);font-size:0.6rem;font-weight:700;color:white;white-space:nowrap}
+.prog-val{font-family:var(--mono);font-size:0.75rem;font-weight:700;color:var(--ink2)}
+.prog-val.win{color:var(--teal)}
+.prog-ref-line{
+  position:absolute;top:0;bottom:0;width:1px;background:var(--amber);
+  left:calc(72.9% / 100 * 100%);
+}
+
+/* COMPARISON TABLE */
+.cmp-wrap{margin-top:2.5rem;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.cmp-table{width:100%;border-collapse:collapse;font-size:0.875rem}
+.cmp-table th{
+  background:var(--ink);color:white;padding:0.75rem 1rem;
+  font-family:var(--mono);font-size:0.65rem;letter-spacing:0.08em;text-transform:uppercase;text-align:left;
+}
+.cmp-table td{padding:0.8rem 1rem;border-bottom:1px solid var(--border);vertical-align:middle}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table tr.our td{background:rgba(13,148,136,0.04)}
+.cmp-table tr.our td:first-child{border-left:3px solid var(--teal)}
+.cmp-table tr.ref td{background:rgba(180,83,9,0.03)}
+.cmp-table tr.ref td:first-child{border-left:3px solid var(--amber)}
+.cmp-table tr:hover td{background:var(--paper2)}
+.win{color:var(--teal);font-weight:700}
+.lose{color:var(--red)}
+.neutral{color:var(--amber)}
+.badge{
+  display:inline-block;font-family:var(--mono);font-size:0.62rem;
+  padding:0.15rem 0.5rem;border-radius:3px;letter-spacing:0.04em;font-weight:700;
+}
+.badge-g{background:rgba(13,148,136,0.1);color:var(--teal)}
+.badge-y{background:rgba(180,83,9,0.1);color:var(--amber)}
+.badge-r{background:rgba(185,28,28,0.1);color:var(--red)}
+.badge-s{background:var(--paper2);color:var(--ink3)}
+
+/* ABLATION */
+.abl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-top:2.5rem}
+.abl-card{
+  background:white;border:1px solid var(--border);border-radius:8px;
+  padding:1.25rem;position:relative;transition:all 0.2s;
+}
+.abl-card:hover{border-color:var(--teal);box-shadow:0 4px 16px rgba(13,148,136,0.08)}
+.abl-card.best{border-color:var(--teal);background:rgba(13,148,136,0.02)}
+.abl-card.best::before{
+  content:'★ BEST';position:absolute;top:-1px;right:1rem;
+  font-family:var(--mono);font-size:0.6rem;background:var(--teal);color:white;
+  padding:0.1rem 0.4rem;border-radius:0 0 3px 3px;letter-spacing:0.06em;
+}
+.abl-card.neg{border-color:rgba(185,28,28,0.3)}
+.abl-card.neg::before{
+  content:'✕ NEGATIVE';position:absolute;top:-1px;right:1rem;
+  font-family:var(--mono);font-size:0.6rem;background:var(--red);color:white;
+  padding:0.1rem 0.4rem;border-radius:0 0 3px 3px;letter-spacing:0.06em;
+}
+.abl-name{font-family:var(--mono);font-size:0.72rem;color:var(--ink2);margin-bottom:0.75rem;letter-spacing:0.02em}
+.abl-nums{display:flex;gap:1rem;margin-bottom:0.5rem}
+.abl-num-block{}
+.abl-num{font-family:var(--mono);font-size:1.4rem;font-weight:700;line-height:1;color:var(--ink)}
+.abl-card.best .abl-num{color:var(--teal)}
+.abl-card.neg .abl-num{color:var(--red)}
+.abl-num-label{font-family:var(--mono);font-size:0.58rem;color:var(--ink3);letter-spacing:0.05em;text-transform:uppercase}
+.abl-std{font-family:var(--mono);font-size:0.65rem;color:var(--ink3)}
+
+/* WASTEWATER */
+.ww-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;margin-top:2.5rem}
+.ww-card{
+  background:white;border:1px solid var(--border);border-radius:8px;
+  padding:1.5rem;transition:all 0.2s;
+}
+.ww-card:hover{border-color:var(--teal);transform:translateY(-2px);box-shadow:0 8px 24px rgba(13,148,136,0.08)}
+.ww-seq{
+  font-family:var(--mono);font-size:0.8rem;font-weight:700;letter-spacing:0.04em;
+  color:var(--ink);margin-bottom:0.75rem;word-break:break-all;line-height:1.5;
+}
+.ww-seq-colored span{color:var(--teal)}
+.ww-stats{display:flex;gap:1rem;flex-wrap:wrap}
+.ww-stat{}
+.ww-stat-num{font-family:var(--mono);font-size:1rem;font-weight:700;color:var(--teal)}
+.ww-stat-label{font-family:var(--mono);font-size:0.6rem;color:var(--ink3);text-transform:uppercase;letter-spacing:0.06em}
+.ww-z-bar{margin-top:0.75rem}
+.ww-z-track{background:var(--paper2);height:4px;border-radius:2px;position:relative;overflow:hidden}
+.ww-z-fill{height:100%;background:var(--teal);border-radius:2px;width:0;transition:width 1.2s ease}
+.ww-z-label{font-family:var(--mono);font-size:0.62rem;color:var(--ink3);margin-top:0.3rem;display:flex;justify-content:space-between}
+
+/* NEGATIVE RESULT CALLOUT */
+.callout{
+  background:rgba(185,28,28,0.04);border:1px solid rgba(185,28,28,0.2);
+  border-radius:8px;padding:1.5rem 2rem;margin-top:2rem;
+  display:flex;gap:1.5rem;align-items:flex-start;
+}
+.callout-icon{font-size:1.5rem;flex-shrink:0}
+.callout-title{font-family:var(--serif);font-size:1rem;font-weight:700;color:var(--red);margin-bottom:0.4rem}
+.callout-body{font-size:0.875rem;color:var(--ink2);line-height:1.7}
+
+/* ESM VALIDATION */
+.esm-grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-top:2.5rem}
+.esm-card{background:white;border:1px solid var(--border);border-radius:8px;padding:2rem}
+.esm-bar-row{display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem}
+.esm-bar-label{font-family:var(--mono);font-size:0.68rem;width:120px;color:var(--ink2);flex-shrink:0;text-align:right}
+.esm-bar-bg{flex:1;background:var(--paper2);border-radius:2px;height:10px;overflow:hidden;position:relative}
+.esm-bar-fill{height:100%;border-radius:2px;width:0;transition:width 1.2s ease}
+.esm-bar-val{font-family:var(--mono);font-size:0.65rem;width:36px;color:var(--ink3)}
+
+/* FOOTER */
+footer{
+  background:var(--ink);color:white;padding:3rem 2.5rem;
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1.5rem;
+  position:relative;z-index:1;
+}
+.footer-left h3{font-family:var(--serif);font-size:1.2rem;font-weight:700;margin-bottom:0.5rem}
+.footer-left p{font-family:var(--mono);font-size:0.7rem;color:rgba(255,255,255,0.4);line-height:1.7}
+.footer-right{font-family:var(--mono);font-size:0.68rem;color:rgba(255,255,255,0.4);line-height:1.8;text-align:right}
+.footer-right a{color:var(--teal);text-decoration:none}
+
+/* REVEAL */
+.reveal{opacity:0;transform:translateY(24px);transition:opacity 0.7s ease,transform 0.7s ease}
+.reveal.vis{opacity:1;transform:none}
+.reveal-l{opacity:0;transform:translateX(-24px);transition:opacity 0.7s ease,transform 0.7s ease}
+.reveal-l.vis{opacity:1;transform:none}
+.reveal-r{opacity:0;transform:translateX(24px);transition:opacity 0.7s ease,transform 0.7s ease}
+.reveal-r.vis{opacity:1;transform:none}
+
+/* SCIENCE SECTION */
+.science-layout{display:grid;grid-template-columns:1fr 1fr;gap:4rem;margin-top:3rem;align-items:start}
+.science-prose{}
+.science-prose h3{font-family:var(--serif);font-size:1.3rem;font-weight:700;color:var(--ink);margin-bottom:0.75rem;margin-top:2rem}
+.science-prose h3:first-child{margin-top:0}
+.science-prose p{font-size:0.9rem;color:var(--ink2);line-height:1.8;margin-bottom:1rem}
+.science-prose strong{color:var(--ink);font-weight:600}
+.science-visual{}
+.spec-diagram{background:white;border:1px solid var(--border);border-radius:8px;padding:1.5rem;margin-bottom:1.5rem}
+.spec-title{font-family:var(--mono);font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink3);margin-bottom:1rem}
+.spec-peaks{display:flex;align-items:flex-end;gap:3px;height:80px;padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:0.5rem}
+.spec-peak{background:var(--teal);border-radius:1px 1px 0 0;min-width:4px;transition:height 0.6s ease;opacity:0.8}
+.spec-peak.b{background:var(--teal)}
+.spec-peak.y{background:var(--amber)}
+.spec-peak.noise{background:var(--border);opacity:0.5}
+.spec-axis{font-family:var(--mono);font-size:0.6rem;color:var(--ink3);display:flex;justify-content:space-between}
+.spec-legend{display:flex;gap:1rem;margin-top:0.75rem;font-family:var(--mono);font-size:0.62rem;color:var(--ink3)}
+.spec-legend span{display:flex;align-items:center;gap:0.3rem}
+.spec-legend span::before{content:'';display:block;width:8px;height:8px;border-radius:1px}
+.spec-legend .bl::before{background:var(--teal)}
+.spec-legend .yl::before{background:var(--amber)}
+.spec-legend .nl::before{background:var(--border)}
+
+.why-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2.5rem}
+.why-card{border:1px solid var(--border);border-radius:8px;padding:1.25rem;background:white}
+.why-card h4{font-family:var(--serif);font-size:0.95rem;font-weight:700;color:var(--ink);margin-bottom:0.5rem}
+.why-card p{font-size:0.8rem;color:var(--ink2);line-height:1.65}
+.why-card.pro{border-top:3px solid var(--teal)}
+.why-card.con{border-top:3px solid var(--red)}
+.why-card-label{font-family:var(--mono);font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem}
+.why-card.pro .why-card-label{color:var(--teal)}
+.why-card.con .why-card-label{color:var(--red)}
+
+.diff-vs{
+  background:white;border:1px solid var(--border);border-radius:8px;
+  overflow:hidden;margin-top:2.5rem;
+}
+.diff-vs-header{
+  display:grid;grid-template-columns:1fr 1fr;
+  background:var(--paper2);border-bottom:1px solid var(--border);
+}
+.diff-vs-col{
+  padding:0.75rem 1.25rem;
+  font-family:var(--mono);font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;
+}
+.diff-vs-col.autoregressive{border-right:1px solid var(--border);color:var(--amber)}
+.diff-vs-col.diffusion{color:var(--teal)}
+.diff-vs-body{display:grid;grid-template-columns:1fr 1fr}
+.diff-vs-item{
+  padding:0.9rem 1.25rem;border-bottom:1px solid var(--border);
+  font-size:0.8rem;color:var(--ink2);line-height:1.6;
+}
+.diff-vs-item:nth-child(odd){border-right:1px solid var(--border)}
+.diff-vs-item:nth-last-child(-n+2){border-bottom:none}
+.diff-vs-item strong{display:block;font-family:var(--mono);font-size:0.65rem;color:var(--ink3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.25rem}
+
+/* PULL QUOTE */
+.pull-quote{
+  border-left:3px solid var(--teal);padding:1rem 1.5rem;margin:2rem 0;
+  background:rgba(13,148,136,0.03);border-radius:0 6px 6px 0;
+}
+.pull-quote p{font-family:var(--serif);font-style:italic;font-size:1.05rem;color:var(--ink2);line-height:1.6}
+.pull-quote cite{font-family:var(--mono);font-size:0.68rem;color:var(--ink3);display:block;margin-top:0.5rem}
+
+/* COUNTER */
+.counter-val{display:inline}
+
+/* RESPONSIVE */
+@media(max-width:900px){
+  .hero-inner{grid-template-columns:1fr}
+  .hero-stats{grid-template-columns:1fr 1fr}
+  .explainer-grid{grid-template-columns:1fr}
+  .science-layout{grid-template-columns:1fr}
+  .why-grid{grid-template-columns:1fr}
+  .diff-vs-header{grid-template-columns:1fr}
+  .diff-vs-body{grid-template-columns:1fr}
+  .diff-vs-item:nth-child(odd){border-right:none}
+  .arch-pipeline{flex-direction:column}
+  .arch-step{border-right:none;border-bottom:1px solid var(--border)}
+  .arch-step:last-child{border-bottom:none}
+  .esm-grid{grid-template-columns:1fr}
+  .prog-row{grid-template-columns:120px 1fr 60px}
+  .prog-name{font-size:0.62rem}
+  .nav-links{display:none}
+}
+@media(max-width:600px){
+  .hero-stats{grid-template-columns:1fr}
+  .hero-bar{flex-direction:column;gap:0.75rem}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-title">Peptide Diffusion</div>
+  <div class="nav-links">
+    <a href="#what">Problem</a>
+    <a href="#science">Science</a>
+    <a href="#arch">Architecture</a>
+    <a href="#demo">Demo</a>
+    <a href="#results">Results</a>
+    <a href="#wastewater">Application</a>
+  </div>
+  <span class="nav-tag">CSE 676 · UB 2026</span>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-inner">
+    <div class="reveal-l">
+      <div class="hero-eyebrow">De Novo Peptide Sequencing</div>
+      <h1>Reading proteins<br>from <em>noise</em></h1>
+      <p class="hero-desc">
+        We trained a self-conditioned absorbing diffusion model that recovers
+        amino-acid sequences directly from mass spectra — no reference proteome required.
+        It beats the published 2025 state of the art by <strong>+26.9 pp</strong> peptide accuracy.
+      </p>
+      <div class="hero-team">
+        <span class="team-dot"></span>
+        Vaishak Girish Kumar &nbsp;·&nbsp; Akshay Mohan Revankar &nbsp;·&nbsp; Sanika Vilas Nanjan<br>
+        <span style="opacity:0.5">University at Buffalo &nbsp;·&nbsp; Spring 2026</span>
+      </div>
+    </div>
+
+    <div class="hero-stats reveal-r">
+      <div class="hstat">
+        <div class="hstat-num"><span class="counter-val" data-target="76.00">0</span>%</div>
+        <div class="hstat-label">AA Recall</div>
+        <div class="hstat-sub">Amino acid–level accuracy</div>
+        <span class="hstat-gain">+3.1 pp vs InstaNovo</span>
+      </div>
+      <div class="hstat amber">
+        <div class="hstat-num"><span class="counter-val" data-target="59.96">0</span>%</div>
+        <div class="hstat-label">Peptide Accuracy</div>
+        <div class="hstat-sub">100% correct sequences</div>
+        <span class="hstat-gain" style="background:rgba(180,83,9,0.1);color:var(--amber)">+26.9 pp vs InstaNovo</span>
+      </div>
+      <div class="hstat dark">
+        <div class="hstat-num">3</div>
+        <div class="hstat-label">Random Seeds</div>
+        <div class="hstat-sub">±0.19 pp AA variance</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-num">6</div>
+        <div class="hstat-label">Wastewater Peptides</div>
+        <div class="hstat-sub">Identified at 5% FDR, no reference proteome</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-bar">
+    <div class="hero-bar-item">Model: <strong>V2 CFID+SGIR</strong></div>
+    <span class="bar-sep">|</span>
+    <div class="hero-bar-item">vs. <strong>InstaNovo</strong> (Nature Machine Intelligence, 2025)</div>
+    <span class="bar-sep">|</span>
+    <div class="hero-bar-item">Diffusion steps: <strong>T = 500</strong></div>
+    <span class="bar-sep">|</span>
+    <div class="hero-bar-item">Beam width: <strong>K = 8</strong></div>
+    <span class="bar-sep">|</span>
+    <div class="hero-bar-item">FDR: <strong>5%</strong></div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- WHAT -->
+<section id="what" class="section">
+  <div class="eyebrow reveal">The Problem</div>
+  <h2 class="reveal">What is <em>de novo</em> sequencing?</h2>
+  <p class="section-intro reveal">
+    A mass spectrometer shatters a peptide into fragment ions and records their masses.
+    De novo sequencing means recovering the amino-acid sequence from that spectrum alone —
+    without searching a database of known proteins.
+  </p>
+
+  <div class="explainer-grid reveal">
+    <div class="exp-cell">
+      <div class="exp-num">01</div>
+      <div class="exp-title">The spectrum</div>
+      <p class="exp-body">
+        A peptide fragments along its backbone producing b-ions and y-ions.
+        The mass spectrometer records each fragment's m/z ratio and intensity —
+        a sparse, noisy fingerprint of the original sequence.
+      </p>
+    </div>
+    <div class="exp-cell">
+      <div class="exp-num">02</div>
+      <div class="exp-title">The challenge</div>
+      <p class="exp-body">
+        Database search methods fail on novel organisms — if the protein isn't in the
+        reference proteome, it can't be found. Wastewater, gut microbiomes, new pathogens:
+        all require de novo approaches.
+      </p>
+    </div>
+    <div class="exp-cell">
+      <div class="exp-num">03</div>
+      <div class="exp-title">Our approach</div>
+      <p class="exp-body">
+        We treat sequencing as iterative denoising. Start with all positions masked,
+        run a learned reverse diffusion process conditioned on the spectrum,
+        and recover the amino-acid sequence step by step.
+      </p>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- SCIENCE EXPLAINED -->
+<section id="science" class="section">
+  <div class="eyebrow reveal">The Science</div>
+  <h2 class="reveal">From shattered molecules<br>to <em>amino acid sequences</em></h2>
+  <p class="section-intro reveal">
+    Understanding this project requires three things: how mass spectrometry works,
+    why the standard database-lookup approach fails on novel organisms, and
+    why a diffusion model is the right architecture for this problem.
+  </p>
+
+  <div class="science-layout">
+    <div class="science-prose reveal-l">
+      <h3>Step 1: The mass spectrometer shatters a peptide</h3>
+      <p>
+        A proteomic sample — say, cell-free proteins extracted from a wastewater stream — is
+        digested with trypsin into short fragments called <strong>peptides</strong> (typically 7–30 amino acids).
+        These are then injected into a mass spectrometer. In the MS2 (tandem MS) stage,
+        each peptide is isolated and deliberately fragmented along its peptide backbone.
+      </p>
+      <p>
+        Fragmentation is not random: it preferentially breaks the amide bonds that link amino
+        acids together. This produces two complementary ion series. <strong>B-ions</strong> carry charge
+        from the N-terminus of the peptide; <strong>y-ions</strong> carry charge from the C-terminus.
+        If the peptide is A-B-C-D-E, then b₁ is the mass of A alone, b₂ is A+B, and so on.
+        Simultaneously, y₁ is E, y₂ is D+E, and so on. Together they form a ladder of masses
+        that encodes the entire sequence.
+      </p>
+      <p>
+        The spectrometer measures the mass-to-charge ratio (m/z) and intensity of each fragment.
+        The result is a <strong>spectrum</strong>: a sparse set of peaks, each peak corresponding (in theory)
+        to one b- or y-ion. In practice, many expected peaks are missing (unfragmented),
+        many unexpected peaks appear (noise, neutral losses, charge states), and peak intensities
+        vary widely with no simple physical model.
+      </p>
+
+      <h3>Step 2: Why database search fails at scale</h3>
+      <p>
+        Traditional proteomics software (Mascot, MaxQuant, Sequest) matches observed spectra to
+        theoretical spectra <em>computed from a protein database</em>. If the protein isn't in the
+        database, it cannot be identified — full stop.
+      </p>
+      <p>
+        This is catastrophic for environmental and metaproteomic samples.
+        <strong>Wastewater</strong> contains hundreds of microbial species, many unsequenced.
+        A wastewater proteome database would be enormous, computationally intractable to search,
+        and still incomplete. Gut microbiome and ancient proteomics face the same wall.
+        De novo sequencing is the only principled path to identification in these settings.
+      </p>
+      <p>
+        Existing de novo tools (DeepNovo, Casanovo, InstaNovo) use autoregressive decoding —
+        they predict amino acids one at a time, left to right, like a language model.
+        This introduces an <strong>exposure bias</strong>: the model trains on ground-truth prefixes
+        but at test time must condition on its own (potentially wrong) predictions. Errors compound.
+        The beam search tries to mitigate this, but it is fundamentally a sequential, greedy process.
+      </p>
+
+      <h3>Step 3: Why diffusion is a better fit</h3>
+      <p>
+        Absorbing multinomial diffusion treats the sequence as a whole. At timestep T=500,
+        every amino acid is replaced with a special MASK token. The model learns to denoise —
+        to predict the original sequence from increasingly noisy versions. At inference,
+        it starts fully masked and iteratively refines <em>all positions simultaneously</em>.
+      </p>
+      <p>
+        This matters because amino acid positions are <strong>not independent</strong>.
+        The identity of position 7 in a peptide constrains what positions 4 and 12 can be,
+        because real proteins have evolved conserved motifs, secondary structure preferences,
+        and hydrophobicity patterns. An autoregressive model must infer all of this from
+        a left-to-right pass. A diffusion model can instead let all positions "talk to each other"
+        across every denoising step through the transformer's global attention.
+      </p>
+      <p>
+        Our key addition — <strong>self-conditioning</strong> — amplifies this effect further.
+        At each reverse step, we first do a fast preview pass to get a rough estimate x̂₀,
+        then immediately use that estimate as additional context for the real denoising pass.
+        This gives the model a global roadmap before committing to local residue decisions,
+        adding +14.6 pp peptide accuracy — the single largest gain in the whole project.
+      </p>
+    </div>
+
+    <div class="science-visual reveal-r">
+      <!-- SPECTRUM DIAGRAM -->
+      <div class="spec-diagram">
+        <div class="spec-title">A simplified MS2 spectrum</div>
+        <div class="spec-peaks" id="specPeaks">
+          <!-- injected by JS -->
+        </div>
+        <div class="spec-axis"><span>low m/z (b₁, y₁)</span><span>high m/z (bₙ, yₙ)</span></div>
+        <div class="spec-legend">
+          <span class="bl">b-ions (N-terminal)</span>
+          <span class="yl">y-ions (C-terminal)</span>
+          <span class="nl">noise / neutral loss</span>
+        </div>
+        <p style="font-size:0.75rem;color:var(--ink3);margin-top:0.75rem;line-height:1.6">
+          Each b-ion and y-ion pair sums to the precursor mass M + 2·1.0079 Da.
+          The b/y-ion pair bias in our PeakEncoder explicitly rewards attention between
+          complementary ion pairs at their expected mass difference.
+        </p>
+      </div>
+
+      <!-- DATABASE vs DE NOVO -->
+      <div class="spec-diagram" style="background:rgba(180,83,9,0.02);border-color:rgba(180,83,9,0.2)">
+        <div class="spec-title" style="color:var(--amber)">Why database search fails</div>
+        <div style="font-size:0.82rem;color:var(--ink2);line-height:1.8">
+          <div style="display:flex;align-items:flex-start;gap:0.5rem;margin-bottom:0.6rem">
+            <span style="color:var(--teal);font-weight:700;flex-shrink:0">✓</span>
+            <span><strong>E. coli EV:</strong> 4,032 known proteins. Database search works well.</span>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:0.5rem;margin-bottom:0.6rem">
+            <span style="color:var(--red);font-weight:700;flex-shrink:0">✗</span>
+            <span><strong>Wastewater:</strong> hundreds of microbial species, most unsequenced. No viable database exists. De novo is the only path.</span>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:0.5rem;margin-bottom:0.6rem">
+            <span style="color:var(--red);font-weight:700;flex-shrink:0">✗</span>
+            <span><strong>Novel pathogens:</strong> if you've never sequenced the genome, you have no reference proteome.</span>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:0.5rem">
+            <span style="color:var(--red);font-weight:700;flex-shrink:0">✗</span>
+            <span><strong>Metaproteomics:</strong> a combined multi-species database is too large to search at acceptable FDR.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- DIFFUSION VS AUTOREGRESSIVE -->
+      <div class="diff-vs">
+        <div class="diff-vs-header">
+          <div class="diff-vs-col autoregressive">Autoregressive (InstaNovo)</div>
+          <div class="diff-vs-col diffusion">Absorbing Diffusion (Ours)</div>
+        </div>
+        <div class="diff-vs-body">
+          <div class="diff-vs-item">
+            <strong>Generation order</strong>
+            Left-to-right, one token at a time. Errors compound.
+          </div>
+          <div class="diff-vs-item">
+            <strong>Generation order</strong>
+            All positions simultaneously refined over T steps.
+          </div>
+          <div class="diff-vs-item">
+            <strong>Position dependencies</strong>
+            Only sees left context at each step (causal mask).
+          </div>
+          <div class="diff-vs-item">
+            <strong>Position dependencies</strong>
+            Full bidirectional attention — every position sees every other.
+          </div>
+          <div class="diff-vs-item">
+            <strong>Self-conditioning</strong>
+            Not applicable — each token fixed once predicted.
+          </div>
+          <div class="diff-vs-item">
+            <strong>Self-conditioning</strong>
+            Preview pass each step; global roadmap before local commits. +14.6 pp.
+          </div>
+          <div class="diff-vs-item">
+            <strong>Peptide accuracy (33%)</strong>
+            One wrong amino acid anywhere in the sequence = fail.
+          </div>
+          <div class="diff-vs-item">
+            <strong>Peptide accuracy (60%)</strong>
+            Iterative refinement corrects early mistakes in later steps.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WHY CARDS -->
+  <div class="why-grid reveal" style="margin-top:3rem">
+    <div class="why-card pro">
+      <div class="why-card-label">Why it works — PeakEncoder</div>
+      <h4>Physics-informed spectrum encoding</h4>
+      <p>The PeakEncoder doesn't just project peak intensities. It explicitly encodes
+      the complementary b/y-ion pairing relationship using a learnable scalar bias initialized
+      at zero — so the model starts purely data-driven but can learn the physics of
+      peptide fragmentation during training. Remove it and AA accuracy drops from 76% to 42%.</p>
+    </div>
+    <div class="why-card pro">
+      <div class="why-card-label">Why it works — self-conditioning</div>
+      <h4>Global context before local decisions</h4>
+      <p>In a 20-residue peptide, the correct identity of residue 10 can depend on
+      residues 1 and 19. Self-conditioning gives the model a coarse global estimate
+      of the whole sequence before it commits to individual positions.
+      The +14.6 pp gain is not from extra compute — it's from better information flow.</p>
+    </div>
+    <div class="why-card pro">
+      <div class="why-card-label">Why it works — CFID+SGIR reranking</div>
+      <h4>Using the spectrum twice</h4>
+      <p>The diffusion model generates K=8 candidate sequences via beam search.
+      CFID then scores each candidate by comparing its theoretical fragment ion
+      distribution to the observed spectrum. SGIR adds intensity-weighted matching.
+      Together they break ties that the model's own confidence scores cannot resolve.</p>
+    </div>
+    <div class="why-card con">
+      <div class="why-card-label">Why mass correction failed</div>
+      <h4>Post-hoc filtering ≠ better training</h4>
+      <p>We tried discarding candidates whose predicted mass disagreed with the
+      precursor by more than 50 ppm. It hurt by 9.6 pp: the model is not yet
+      precise enough that "mass-incorrect" reliably means "sequence-incorrect."
+      The right fix is mass-conditioned training — a future direction.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- ARCHITECTURE -->
+<section id="arch" class="section">
+  <div class="eyebrow reveal">Architecture</div>
+  <h2 class="reveal">Three targeted contributions<br>on top of <em>absorbing diffusion</em></h2>
+  <p class="section-intro reveal">
+    Each contribution is independently ablated. Together they take the model
+    from 41.88% AA recall (plain absorbing diffusion) to 76.00%.
+  </p>
+
+  <div class="arch-pipeline reveal">
+    <div class="arch-step">
+      <div class="arch-step-num">Input</div>
+      <div class="arch-step-title">MS/MS Spectrum</div>
+      <p class="arch-step-body">N peaks (m/z, intensity), precursor mass M, charge z. Sorted by m/z, capped at 800 peaks.</p>
+    </div>
+
+    <div class="arch-step">
+      <div class="arch-step-num">① PeakEncoder</div>
+      <div class="arch-step-title">B/Y-Ion Pair Bias</div>
+      <p class="arch-step-body">Sinusoidal m/z encoding + log-intensity projection. AlphaFold3-inspired learnable scalar bias on complementary ion pairs.</p>
+      <div class="arch-step-eq">Ã_ij = A_ij + s·𝟙[|mᵢ+mⱼ−M'| &lt; 50ppm]</div>
+      <div class="arch-gain">s initialized to 0 — physics-informed but safe</div>
+    </div>
+
+    <div class="arch-step">
+      <div class="arch-step-num">② Diffusion</div>
+      <div class="arch-step-title">Absorbing + Self-Conditioning</div>
+      <p class="arch-step-body">T=500 cosine-schedule steps. At each step, a preview pass produces a coarse estimate fed back as additional context.</p>
+      <div class="arch-step-eq">x̂₀ = fθ(xₜ, S, x̂₀ᵖʳᵉᵛ)</div>
+      <div class="arch-gain">+14.6 pp peptide accuracy — biggest single gain</div>
+    </div>
+
+    <div class="arch-step">
+      <div class="arch-step-num">③ Inference</div>
+      <div class="arch-step-title">CFID + SGIR Reranking</div>
+      <p class="arch-step-body">Beam search K=8 with knapsack mass filter. Rerank by cosine similarity of theoretical vs. observed fragment ion distributions, weighted by peak intensity.</p>
+      <div class="arch-step-eq">score(c) = CFID(c) + λΣᵢIᵢ</div>
+      <div class="arch-gain">Pareto-optimal: best pep acc, lower variance</div>
+    </div>
+
+    <div class="arch-step">
+      <div class="arch-step-num">Output</div>
+      <div class="arch-step-title">Peptide Sequences</div>
+      <p class="arch-step-body">CSV of PSMs with confidence scores. FDR filtering at 5% via q-value thresholding.</p>
+    </div>
+  </div>
+
+  <div class="pull-quote reveal">
+    <p>"Absorbing diffusion without the PeakEncoder (43.05% AA) performs no better than the GRU baseline (44.30%). It is the PeakEncoder — not diffusion alone — that drives the 31 pp jump."</p>
+    <cite>— Key finding from the ablation study</cite>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- DEMO -->
+<section id="demo" class="section">
+  <div class="eyebrow reveal">Interactive Demo</div>
+  <h2 class="reveal">Watch diffusion <em>denoise</em> a peptide</h2>
+  <p class="section-intro reveal">
+    At T=500 all positions are masked. The model progressively commits to amino acids
+    as confidence grows. Self-conditioning feeds each step's output back as context for the next.
+  </p>
+
+  <div class="demo-box reveal">
+    <div class="demo-label">Target sequence: GSNYNEVVTLADVTIVQGIR (wastewater peptide, 5% FDR)</div>
+    <div class="demo-seq" id="demoSeq"></div>
+    <div class="demo-progress" id="demoProg"></div>
+    <div class="demo-step-info" id="demoInfo">Press play to start the reverse diffusion process.</div>
+    <div class="demo-controls">
+      <button class="btn btn-primary" id="demoPlay" onclick="startDemo()">▶ Run Diffusion</button>
+      <button class="btn btn-outline" onclick="resetDemo()">↺ Reset</button>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- RESULTS -->
+<section id="results" class="section">
+  <div class="eyebrow reveal">Results</div>
+  <h2 class="reveal">From 2.68% to 59.96%:<br><em>the full development arc</em></h2>
+  <p class="section-intro reveal">
+    Peptide accuracy across all model generations. The amber dashed line marks InstaNovo (33.1%).
+    Each step is a measurable, isolated improvement.
+  </p>
+
+  <div class="prog-chart reveal" id="progChart">
+    <!-- Rows injected by JS -->
+  </div>
+
+  <div class="cmp-wrap reveal" style="margin-top:3rem">
+    <table class="cmp-table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>AA Recall</th>
+          <th>Pep Accuracy</th>
+          <th>Δ Pep vs InstaNovo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>LSTM Baseline</td><td class="lose">31.51%</td><td class="lose">2.68%</td><td class="lose">−30.42 pp</td><td><span class="badge badge-s">Baseline</span></td></tr>
+        <tr><td>GRU Baseline</td><td>44.30%</td><td class="lose">6.70%</td><td class="lose">−26.40 pp</td><td><span class="badge badge-s">Baseline</span></td></tr>
+        <tr><td>Absorbing (no PeakEncoder)</td><td>41.88%</td><td class="lose">5.44%</td><td class="lose">−27.66 pp</td><td><span class="badge badge-s">Ablation</span></td></tr>
+        <tr><td>PeakEncoder + BY argmax</td><td class="win">74.78%</td><td class="neutral">36.51%</td><td class="neutral">+3.41 pp</td><td><span class="badge badge-y">V1</span></td></tr>
+        <tr><td>V1: PeakEncoder + CFID</td><td class="win">75.19%</td><td class="neutral">44.99%</td><td class="win">+11.89 pp</td><td><span class="badge badge-y">V1</span></td></tr>
+        <tr class="ref"><td><strong>InstaNovo (Nature MI, 2025)</strong></td><td class="neutral">72.90%</td><td class="neutral">33.10%</td><td>—</td><td><span class="badge badge-y">SOTA Ref</span></td></tr>
+        <tr class="our"><td><strong>V2: + Self-Conditioning argmax</strong></td><td class="win">76.30%</td><td class="win">57.49%</td><td class="win">+24.39 pp</td><td><span class="badge badge-g">V2</span></td></tr>
+        <tr class="our"><td><strong>V2: CFID</strong></td><td class="win">76.02%</td><td class="win">59.60%</td><td class="win">+26.50 pp</td><td><span class="badge badge-g">V2</span></td></tr>
+        <tr class="our"><td><strong>✦ V2: CFID + SGIR — FINAL</strong></td><td class="win">76.00 ± 0.19%</td><td class="win">59.96 ± 3.82%</td><td class="win">+26.86 pp</td><td><span class="badge badge-g">Best</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- ABLATION -->
+<section id="ablation" class="section">
+  <div class="eyebrow reveal">Ablation</div>
+  <h2 class="reveal">Seven inference strategies,<br><em>three seeds each</em></h2>
+  <p class="section-intro reveal">
+    Mean ± std across seeds 0, 1, 2. CFID+SGIR is Pareto-optimal.
+    Mass correction is a reproducible negative result — it hurts by ~9.6 pp.
+  </p>
+
+  <div class="abl-grid reveal">
+    <div class="abl-card">
+      <div class="abl-name">argmax (no reranking)</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">76.21</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">57.84</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: ±0.21 AA · ±6.49 pep</div>
+    </div>
+    <div class="abl-card">
+      <div class="abl-name">SGIR only</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">76.17</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">57.63</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: ±0.02 AA · ±5.10 pep</div>
+    </div>
+    <div class="abl-card">
+      <div class="abl-name">CFID</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">75.93</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">59.60</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: ±0.13 AA · ±3.94 pep</div>
+    </div>
+    <div class="abl-card best">
+      <div class="abl-name">CFID + SGIR</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">76.00</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">59.96</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: ±0.19 AA · ±3.82 pep</div>
+    </div>
+    <div class="abl-card neg">
+      <div class="abl-name">CFID + mass-corr</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">75.15</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">50.35</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: ±0.29 AA · ±3.38 pep</div>
+    </div>
+    <div class="abl-card neg">
+      <div class="abl-name">mass-corr only</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">75.24</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">47.88</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: ±0.22 AA · ±5.41 pep</div>
+    </div>
+    <div class="abl-card">
+      <div class="abl-name">rerank-spectral</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">73.73</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">53.67</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: ±0.43 AA · ±6.15 pep</div>
+    </div>
+  </div>
+
+  <div class="callout reveal">
+    <div class="callout-icon">⚠</div>
+    <div>
+      <div class="callout-title">Negative result: mass correction hurts</div>
+      <p class="callout-body">
+        A post-hoc 50 ppm mass filter discards too many near-correct candidates at the model's
+        current confidence level, reducing peptide accuracy by <strong>9.6 pp</strong>.
+        The correct fix is a mass-conditioned training loss — not post-hoc filtering.
+        This result is reproducible across all three seeds.
+      </p>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- WASTEWATER -->
+<section id="wastewater" class="section">
+  <div class="eyebrow reveal">Real-World Application</div>
+  <h2 class="reveal">Wastewater metaproteomics:<br><em>no reference proteome</em></h2>
+  <p class="section-intro reveal">
+    Six peptides from a mixed-community wastewater sample (Sample 2) survived 5% FDR
+    filtering and replicate-consistency checks. ESM-2 pseudo-perplexity confirms
+    structural plausibility — all z-scores below 1.0 relative to the E. coli reference distribution.
+  </p>
+
+  <div class="ww-grid" id="wwGrid"></div>
+
+  <div class="esm-grid reveal" style="margin-top:3rem">
+    <div class="esm-card">
+      <div class="eyebrow" style="margin-bottom:1rem">ESM-2 PPL by Group</div>
+      <p style="font-size:0.8rem;color:var(--ink3);margin-bottom:1.5rem">Lower = more protein-like. ESM-2 trained on UniProt. Wastewater sequences are novel microbial peptides — higher PPL expected.</p>
+      <div id="esmBars"></div>
+    </div>
+    <div class="esm-card">
+      <div class="eyebrow" style="margin-bottom:1rem">Key Interpretation</div>
+      <p style="font-size:0.875rem;color:var(--ink2);line-height:1.8;margin-bottom:1rem">
+        Diffusion V2 predictions (PPL 31.03) are <strong>statistically indistinguishable</strong>
+        from ground-truth E. coli EV sequences (PPL 31.38), confirming the model generates
+        structurally protein-like sequences.
+      </p>
+      <p style="font-size:0.875rem;color:var(--ink2);line-height:1.8;margin-bottom:1rem">
+        Wastewater sequences (PPL 37.15) are elevated relative to the E. coli reference —
+        consistent with their origin in novel microbial organisms not in ESM-2's training data.
+      </p>
+      <p style="font-size:0.875rem;color:var(--ink2);line-height:1.8">
+        All six wastewater sequences have <strong>z &lt; 1.0</strong> relative to the GT distribution —
+        within one standard deviation, confirming structural plausibility.
+      </p>
+      <div style="margin-top:1.5rem;padding:1rem;background:var(--paper2);border-radius:6px;font-family:var(--mono);font-size:0.72rem;color:var(--ink2)">
+        GT mean: 31.38 ± 11.21<br>
+        Diffusion: 31.03 ± 10.34 (Δ = −0.35)<br>
+        Wastewater: 37.15 ± 2.89 (z = 0.01–0.87)
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-left">
+    <h3>Peptide Diffusion</h3>
+    <p>
+      Vaishak Girish Kumar · Akshay Mohan Revankar · Sanika Vilas Nanjan<br>
+      {vaishakg, arevanka, snajan}@buffalo.edu<br>
+      CSE 676 Deep Learning · University at Buffalo · Spring 2026
+    </p>
+  </div>
+  <div class="footer-right">
+    <a href="https://github.com/Gustav-Proxi/peptide-diffusion">GitHub</a><br>
+    report/report.pdf<br>
+    V2 CFID+SGIR · 76.00% AA · 59.96% Pep
+  </div>
+</footer>
+
+<script>
+/* ── REVEAL ON SCROLL ────────────────────────────────────────────────── */
+const io = new IntersectionObserver(entries=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      e.target.classList.add('vis');
+      io.unobserve(e.target);
+    }
+  });
+},{threshold:0.12});
+document.querySelectorAll('.reveal,.reveal-l,.reveal-r').forEach(el=>io.observe(el));
+
+/* ── COUNTER ANIMATION ───────────────────────────────────────────────── */
+function animCount(el){
+  const target=parseFloat(el.dataset.target);
+  const dec=target%1!==0?2:0;
+  const dur=1600,start=performance.now();
+  function step(t){
+    const p=Math.min((t-start)/dur,1);
+    const ease=1-Math.pow(1-p,4);
+    el.textContent=(target*ease).toFixed(dec);
+    if(p<1)requestAnimationFrame(step);
+    else el.textContent=target.toFixed(dec);
+  }
+  requestAnimationFrame(step);
+}
+const cio=new IntersectionObserver(entries=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      e.target.querySelectorAll('.counter-val').forEach(animCount);
+      cio.unobserve(e.target);
+    }
+  });
+},{threshold:0.3});
+document.querySelectorAll('#hero').forEach(el=>cio.observe(el));
+
+/* ── DIFFUSION DEMO ──────────────────────────────────────────────────── */
+const TARGET='GSNYNEVVTLADVTIVQGIR'.split('');
+const STEPS=[
+  {label:'T=500 — All positions masked',frac:1.0},
+  {label:'T=400 — High-uncertainty phase, no commits',frac:0.82},
+  {label:'T=300 — First high-confidence residues revealed',frac:0.6},
+  {label:'T=200 — Self-conditioning refining global context',frac:0.38},
+  {label:'T=100 — Cascade of commits across the sequence',frac:0.18},
+  {label:'T=50 — Nearly complete, edge positions last',frac:0.05},
+  {label:'T=0 — Sequence fully denoised',frac:0},
+];
+let demoRunning=false,demoTimer=null,demoStep=0;
+
+function buildDemo(){
+  const seq=document.getElementById('demoSeq');
+  const prog=document.getElementById('demoProg');
+  seq.innerHTML=TARGET.map((_,i)=>`<div class="aa masked" id="aa${i}">_</div>`).join('');
+  prog.innerHTML=STEPS.map((_,i)=>`<div class="dprog" id="dp${i}"></div>`).join('');
+  document.getElementById('demoInfo').textContent='Press play to start the reverse diffusion process.';
+  demoStep=0;demoRunning=false;
+  if(demoTimer)clearTimeout(demoTimer);
+}
+
+function applyStep(step){
+  const {label,frac}=STEPS[step];
+  TARGET.forEach((_,i)=>{
+    const el=document.getElementById(`aa${i}`);
+    const r=Math.random();
+    if(frac===0){el.className='aa final';el.textContent=TARGET[i]}
+    else if(frac>0.7){el.className='aa masked';el.textContent='_'}
+    else if(r<frac*0.6){el.className='aa masked';el.textContent='_'}
+    else if(r<frac){el.className='aa uncertain';el.textContent=TARGET[i]}
+    else{el.className='aa revealed';el.textContent=TARGET[i]}
+  });
+  if(frac===0){
+    TARGET.forEach((_,i)=>{
+      const el=document.getElementById(`aa${i}`);
+      el.className='aa final';el.textContent=TARGET[i];
+    });
+  }
+  STEPS.forEach((_,i)=>{
+    const dp=document.getElementById(`dp${i}`);
+    dp.className='dprog'+(i===step?' active':i<step?' done':'');
+  });
+  document.getElementById('demoInfo').textContent=label;
+}
+
+function startDemo(){
+  if(demoRunning)return;
+  demoRunning=true;demoStep=0;
+  document.getElementById('demoPlay').disabled=true;
+  function next(){
+    if(demoStep>=STEPS.length){demoRunning=false;document.getElementById('demoPlay').disabled=false;return;}
+    applyStep(demoStep++);
+    demoTimer=setTimeout(next,demoStep===STEPS.length?800:900);
+  }
+  next();
+}
+function resetDemo(){
+  demoRunning=false;if(demoTimer)clearTimeout(demoTimer);
+  document.getElementById('demoPlay').disabled=false;
+  buildDemo();
+}
+buildDemo();
+
+/* ── PROGRESSION CHART ───────────────────────────────────────────────── */
+const PROG_DATA=[
+  {name:'LSTM Baseline',aa:31.51,pep:2.68,type:'base'},
+  {name:'GRU Baseline',aa:44.30,pep:6.70,type:'base'},
+  {name:'Absorbing (no PeakEnc)',aa:41.88,pep:5.44,type:'base'},
+  {name:'PeakEnc+BY argmax',aa:74.78,pep:36.51,type:'v1'},
+  {name:'V1: PeakEnc+CFID',aa:75.19,pep:44.99,type:'v1'},
+  {name:'InstaNovo (SOTA ref)',aa:72.90,pep:33.10,type:'ref'},
+  {name:'V2: +SelfCond argmax',aa:76.30,pep:57.49,type:'v2'},
+  {name:'V2: CFID',aa:76.02,pep:59.60,type:'v2'},
+  {name:'V2: CFID+SGIR ✦',aa:76.00,pep:59.96,type:'best'},
+];
+const COLOR_MAP={base:'#b0a898',v1:'#d97706',ref:'#b91c1c',v2:'#0d9488',best:'#0d9488'};
+const MAX_PEP=65;
+
+function buildProgChart(){
+  const c=document.getElementById('progChart');
+  c.innerHTML=`
+    <div style="font-family:var(--mono);font-size:0.68rem;color:var(--ink3);margin-bottom:1rem;display:flex;gap:1rem;flex-wrap:wrap">
+      <span>■ <span style="color:var(--teal)">■</span> Ours &nbsp;
+      <span style="color:var(--amber)">■</span> V1 &nbsp;
+      <span style="color:var(--red)">■</span> InstaNovo ref &nbsp;
+      <span style="color:#b0a898">■</span> Baselines</span>
+      <span style="margin-left:auto">Peptide Accuracy (%) — amber line = InstaNovo 33.1%</span>
+    </div>
+  `;
+  PROG_DATA.forEach(d=>{
+    const row=document.createElement('div');
+    row.className='prog-row';
+    const pct=(d.pep/MAX_PEP*100).toFixed(1);
+    const col=COLOR_MAP[d.type];
+    row.innerHTML=`
+      <div class="prog-name">${d.name}</div>
+      <div class="prog-bar-bg">
+        <div class="prog-bar" data-w="${pct}" style="background:${col}">
+          <span>${d.pep}%</span>
+        </div>
+        <div class="prog-ref-line"></div>
+      </div>
+      <div class="prog-val ${d.type==='best'||d.type==='v2'?'win':''}">${d.pep}%</div>
+    `;
+    c.appendChild(row);
+  });
+}
+buildProgChart();
+
+/* animate prog bars on scroll */
+const pio=new IntersectionObserver(entries=>{
+  if(entries[0].isIntersecting){
+    document.querySelectorAll('.prog-bar').forEach((b,i)=>{
+      setTimeout(()=>{b.style.width=b.dataset.w+'%'},i*80);
+    });
+    pio.disconnect();
+  }
+},{threshold:0.2});
+pio.observe(document.getElementById('progChart'));
+
+/* ── WASTEWATER CARDS ────────────────────────────────────────────────── */
+const WW=[
+  {seq:'FNDVIPMGEQAINTNEGAYR',ppl:41.13,anom:0.85,z:0.87,charge:2},
+  {seq:'NNGNAIGVDLAAIPFVAGDR',ppl:31.51,anom:0.85,z:0.01,charge:3},
+  {seq:'GSNYNEVVTLADVTIVQGIR',ppl:36.63,anom:0.90,z:0.47,charge:3},
+  {seq:'DLDVEFTALDGASVQVIAYR',ppl:38.35,anom:0.95,z:0.62,charge:2},
+  {seq:'ALDNAIDGGQYSFLEVAINR',ppl:37.87,anom:0.90,z:0.58,charge:2},
+  {seq:'QLDNNCVYLGATAGVPIAK', ppl:37.42,anom:0.84,z:0.54,charge:2},
+];
+const wwGrid=document.getElementById('wwGrid');
+WW.forEach((p,idx)=>{
+  const card=document.createElement('div');
+  card.className='ww-card reveal';
+  card.style.transitionDelay=`${idx*0.07}s`;
+  card.innerHTML=`
+    <div class="ww-seq"><span style="font-family:var(--mono);letter-spacing:0.06em">${p.seq}</span></div>
+    <div class="ww-stats">
+      <div class="ww-stat"><div class="ww-stat-num">${p.ppl.toFixed(1)}</div><div class="ww-stat-label">ESM-2 PPL</div></div>
+      <div class="ww-stat"><div class="ww-stat-num">${(p.anom*100).toFixed(0)}%</div><div class="ww-stat-label">Anom. frac</div></div>
+      <div class="ww-stat"><div class="ww-stat-num">${p.z.toFixed(2)}</div><div class="ww-stat-label">z-score</div></div>
+      <div class="ww-stat"><div class="ww-stat-num">+${p.charge}</div><div class="ww-stat-label">Charge</div></div>
+    </div>
+    <div class="ww-z-bar">
+      <div class="ww-z-track"><div class="ww-z-fill" data-w="${(p.z/2)*100}" style="background:${p.z<1?'var(--teal)':'var(--amber)'}"></div></div>
+      <div class="ww-z-label"><span>z=0</span><span style="color:var(--amber)">z=1 threshold</span><span>z=2</span></div>
+    </div>
+  `;
+  wwGrid.appendChild(card);
+});
+io.observe(...wwGrid.querySelectorAll('.reveal'));
+const wio=new IntersectionObserver(entries=>{
+  if(entries[0].isIntersecting){
+    document.querySelectorAll('.ww-z-fill').forEach((b,i)=>{
+      setTimeout(()=>{b.style.width=b.dataset.w+'%'},i*120);
+    });
+    wio.disconnect();
+  }
+},{threshold:0.2});
+wio.observe(wwGrid);
+wwGrid.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+/* ── ESM BARS ────────────────────────────────────────────────────────── */
+const ESM_GROUPS=[
+  {label:'GT (E.coli EV)',mean:31.38,col:'var(--teal)'},
+  {label:'Diffusion V2',mean:31.03,col:'var(--teal)'},
+  {label:'GRU',mean:31.33,col:'#7a7668'},
+  {label:'LSTM',mean:31.43,col:'#7a7668'},
+  {label:'Random',mean:35.19,col:'var(--amber)'},
+  {label:'Wastewater FDR',mean:37.15,col:'var(--red)'},
+];
+const MAX_ESM=45;
+const esmC=document.getElementById('esmBars');
+ESM_GROUPS.forEach(g=>{
+  const w=(g.mean/MAX_ESM*100).toFixed(1);
+  const row=document.createElement('div');
+  row.className='esm-bar-row';
+  row.innerHTML=`
+    <div class="esm-bar-label">${g.label}</div>
+    <div class="esm-bar-bg">
+      <div class="esm-bar-fill" data-w="${w}" style="background:${g.col}"></div>
+    </div>
+    <div class="esm-bar-val">${g.mean.toFixed(1)}</div>
+  `;
+  esmC.appendChild(row);
+});
+const eio=new IntersectionObserver(entries=>{
+  if(entries[0].isIntersecting){
+    document.querySelectorAll('.esm-bar-fill').forEach((b,i)=>{
+      setTimeout(()=>{b.style.width=b.dataset.w+'%'},i*100);
+    });
+    eio.disconnect();
+  }
+},{threshold:0.3});
+eio.observe(esmC);
+
+/* ── SPECTRUM DIAGRAM ────────────────────────────────────────────────── */
+(function(){
+  const container=document.getElementById('specPeaks');
+  if(!container)return;
+  // Simulate a 20-residue peptide spectrum: b-ions, y-ions, noise
+  const peaks=[
+    // b-ions (teal) — increasing m/z
+    {type:'b',h:0.35},{type:'n',h:0.08},{type:'b',h:0.55},{type:'n',h:0.05},
+    {type:'b',h:0.42},{type:'b',h:0.68},{type:'n',h:0.10},{type:'b',h:0.30},
+    {type:'n',h:0.06},{type:'b',h:0.72},{type:'b',h:0.48},
+    // center gap — neutral losses
+    {type:'n',h:0.12},{type:'n',h:0.07},
+    // y-ions (amber) — overlapping region
+    {type:'y',h:0.61},{type:'n',h:0.09},{type:'y',h:0.44},{type:'y',h:0.80},
+    {type:'n',h:0.06},{type:'y',h:0.53},{type:'y',h:0.38},{type:'n',h:0.08},
+    {type:'y',h:0.65},{type:'y',h:0.29},
+  ];
+  peaks.forEach(p=>{
+    const el=document.createElement('div');
+    el.className=`spec-peak ${p.type}`;
+    el.style.height='0px';
+    el.dataset.h=Math.round(p.h*76)+'px';
+    el.style.flex=`0 0 ${p.type==='n'?4:5}px`;
+    container.appendChild(el);
+  });
+  const sio=new IntersectionObserver(entries=>{
+    if(entries[0].isIntersecting){
+      container.querySelectorAll('.spec-peak').forEach((el,i)=>{
+        setTimeout(()=>{el.style.height=el.dataset.h},i*35+200);
+      });
+      sio.disconnect();
+    }
+  },{threshold:0.4});
+  sio.observe(container);
+})();
+</script>
+</body>
+</html>
