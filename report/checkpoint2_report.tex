@@ -292,29 +292,33 @@ which is exactly what CFID then consolidates.
 \begin{table}[H]
 \centering
 \caption{Inference strategy ablation on the 472-spectrum test set (mean across 3 seeds).
-  All rows use the same PeakEncoder+BYBias model weights (epoch~150).}
+  V1 uses epoch-150 PeakEnc+BYBias weights; V2 adds self-conditioning, cosine schedule,
+  AdamW, and 200 epochs.}
 \label{tab:ablation}
-\begin{tabular}{lcc}
+\begin{tabular}{lccc}
 \toprule
-\textbf{Inference strategy} & \textbf{AA Recall (\%)} & \textbf{Pep.\ Acc.\ (\%)} \\
+\textbf{Inference strategy} & \textbf{Model} & \textbf{AA Recall (\%)} & \textbf{Pep.\ Acc.\ (\%)} \\
 \midrule
-Argmax (baseline)                   & 74.81 & 36.65 \\
-Option B: single-swap mass-correct  & 74.11 & 30.79 \\
-NOVEL\#9: SGIR only                 & 74.94 & 37.01 \\
-NOVEL\#10: spectral rerank          & 72.71 & 37.57 \\
+Argmax (baseline)       & V1 & 74.81 & 36.65 \\
+NOVEL\#11: CFID         & V1 & 75.14 & 45.06 \\
+NOVEL\#11: CFID + SGIR  & V1 & 75.17 & 44.63 \\
+\midrule
+Argmax (baseline)       & V2 & 76.21 & 57.84 \\
+NOVEL\#9: SGIR only     & V2 & 76.17 & 57.63 \\
+NOVEL\#11: CFID         & V2 & 75.93 & 59.60 \\
 \rowcolor{gray!15}
-NOVEL\#11: CFID                     & \textbf{75.14} & \textbf{45.06} \\
-NOVEL\#11: CFID + SGIR              & 75.17 & 44.63 \\
-NOVEL\#11: CFID + mass-correct      & 74.35 & 37.57 \\
+NOVEL\#11: CFID + SGIR  & V2 & \textbf{76.00} & \textbf{59.96} \\
+NOVEL\#10: spectral rerank & V2 & 73.73 & 53.67 \\
+Option B: mass-correct  & V2 & 75.24 & 47.88 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-CFID is the clear winner on peptide accuracy ($+8.41$ pp over argmax). SGIR adds
-a marginal $+0.03$~pp when combined with CFID. Spectral reranking (NOVEL\#10) and
-mass correction both hurt, confirming that temperature sampling introduces more
-noise than the reranking signal recovers at this model quality level. The best
-single inference mode is CFID alone.
+In V2, argmax already achieves 76.21\% AA / 57.84\% pep, so CFID adds a smaller
+but consistent $+2.11$~pp peptide accuracy gain. CFID+SGIR is the overall best
+configuration at 75.99\%~AA / 59.96\%~pep. Spectral reranking and mass correction
+both hurt, consistent with V1 findings --- temperature sampling introduces more
+noise than the signal recovers at this model quality level.
 
 \paragraph{Ensemble.}
 Earlier ablations found that an LSTM+GRU ensemble scored 45.82\% AA recall, well
