@@ -35,7 +35,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \renewcommand{\headrulewidth}{0.4pt}
-\fancyhead[L]{\small CSE 676 Deep Learning — Final Project}
+\fancyhead[L]{\small CSE 676 Deep Learning --- Final Project}
 \fancyhead[R]{\small De Novo Peptide Sequencing via Multinomial Diffusion}
 \fancyfoot[C]{\thepage}
 
@@ -52,7 +52,7 @@
   \vspace{-0.5in}
   \textbf{De Novo Peptide Sequencing via Self-Conditioned\\
   Multinomial Diffusion with Physics-Informed B/Y-Ion Encoding}\\[4pt]
-  \normalsize CSE 676 Deep Learning — University at Buffalo, Spring 2026
+  \normalsize CSE 676 Deep Learning --- University at Buffalo, Spring 2026
 }
 \author{%
   Vaishak Girish Kumar \quad Akshay Mohan Revankar \quad Sanika Vilas Nanjan \\
@@ -80,7 +80,7 @@ Across three random seeds our V2 model achieves
 \textbf{76.00\%~AA recall} and \textbf{59.96\%~peptide accuracy} at 5\%~FDR
 versus InstaNovo's 72.9\%~/~33.1\%,
 a gain of \textbf{+3.1~pp} AA recall and \textbf{+26.9~pp} peptide accuracy.
-Seed variance is $\pm$0.19~pp AA, confirming the improvements are architecture-driven.
+Seed variance is $\pm$0.19~pp AA; the improvements are architecture-driven.
 Applied to wastewater samples without a reference proteome, 6 peptides survive 5\%~FDR;
 ESM-2 pseudo-perplexity analysis confirms structural plausibility ($z\!<\!1.0$ vs.\ E.\,coli reference).
 \end{abstract}
@@ -202,7 +202,7 @@ logits with a learnable bias conditioned on fragment ion complementarity:
 \end{equation}
 where $M' = M + m(\text{H}_2\text{O}) + 2m(\text{H})$, $\epsilon = 50~\text{ppm} \cdot M'$,
 $s \in \R$ is a scalar parameter, and $A_{ij}$ is the pre-softmax attention logit.
-Crucially, $s$ is \emph{initialized to zero}: the model begins at the data-driven optimum and
+$s$ is \emph{initialized to zero}: the model begins at the data-driven optimum and
 can learn to ignore the physics signal if it is unreliable---a key stability property absent in
 hard-coded pair biases.
 
@@ -280,7 +280,7 @@ deviation $> 50~\text{ppm}$ from the precursor.
 This is a \emph{negative result}: mass correction reduces peptide accuracy by 9.6~pp
 (59.96\% $\to$ 50.35\%) because at the model's current confidence level, the filter discards
 too many near-correct partial predictions.
-The lesson: mass-aware loss during training is the correct fix, not post-hoc filtering.
+Mass-aware loss during training is the correct approach, not post-hoc filtering.
 
 \begin{algorithm}[t]
   \caption{V2 Inference: CFID+SGIR Reranking}
@@ -400,11 +400,9 @@ extracted from checkpoint metrics.
 \end{table}
 
 \paragraph{Key observations.}
-(1)~Diffusion without PeakEncoder (42--43\%~AA) performs no better than GRU (44\%)---it is the
-PeakEncoder, not diffusion alone, that drives the 30~pp jump.
-(2)~Self-conditioning then adds +14.6~pp peptide accuracy on top of V1.
-(3)~Our final model outperforms InstaNovo on both metrics; the peptide accuracy gap (+26.9~pp)
-is especially meaningful as it measures end-to-end correctness.
+Diffusion without the PeakEncoder (42--43\%~AA) performs no better than the GRU baseline (44\%); the PeakEncoder, not diffusion alone, drives the 30~pp jump.
+Self-conditioning adds +14.6~pp peptide accuracy on top of V1.
+The peptide accuracy gap over InstaNovo (+26.9~pp) is the more meaningful metric, as it measures end-to-end correctness.
 
 \subsection{Inference Strategy Ablation}
 
@@ -451,7 +449,7 @@ suggesting that reranking also stabilizes predictions across spectra of varying 
 Both mass-correction variants reduce peptide accuracy by 8--12~pp.
 At the current confidence level, the model generates candidates whose \emph{composition} is
 correct but whose precise fragment masses slightly deviate from the 50~ppm hard threshold.
-The right fix is a mass-conditioned training loss, not post-hoc filtering.
+A mass-conditioned training loss is the correct approach, not post-hoc filtering.
 
 \subsection{Training Dynamics}
 
@@ -515,7 +513,7 @@ where $p_\phi$ is the ESM-2 masked language model.
 
 \paragraph{Diffusion output is indistinguishable from ground truth.}
 Diffusion V2 predictions have mean PPL $31.03$, within $\Delta = 0.35$ of ground truth ($31.38$).
-This validates that the model generates structurally protein-like sequences even for
+The model generates structurally protein-like sequences even for
 incorrectly-sequenced spectra.
 
 \paragraph{Wastewater sequences are structurally plausible.}
@@ -555,7 +553,7 @@ UniProt training data.
 \paragraph{Self-conditioning is the dominant contribution.}
 The +14.6~pp peptide accuracy gain from V1 to V2 exceeds the combined effect of all inference
 strategies.
-The mechanism is clear: absorbing diffusion denoises tokens at each position independently;
+Absorbing diffusion denoises tokens at each position independently;
 without global information, nearby positions cannot coordinate to satisfy the total mass
 constraint or enforce physically plausible amino-acid neighbors.
 Self-conditioning (Eq.~\ref{eq:selfcond}) injects a coarse global estimate at every step,
@@ -566,7 +564,7 @@ The absorbing diffusion \emph{without} the PeakEncoder (43.05\%~AA) performs com
 GRU baseline (44.30\%).
 It is the PeakEncoder's capacity to localize informative peaks---amplified by the B/Y-ion pair
 bias---that enables the 31~pp jump.
-This confirms that spectrum encoding is the bottleneck in de novo sequencing, not the decoder.
+Spectrum encoding is the bottleneck in de novo sequencing, not the decoder.
 
 \paragraph{Variance and reproducibility.}
 AA recall seed variance of $\pm$0.19~pp across three seeds is near-zero, confirming that the
@@ -576,10 +574,12 @@ correct), but still lower than argmax ($\pm$6.49~pp), suggesting CFID+SGIR also 
 sensitivity to lucky beam candidates.
 
 \paragraph{Limitations.}
-\textbf{(1)}~Test set of 472 spectra is small; confidence intervals would tighten with larger benchmarks.
-\textbf{(2)}~No BLAST confirmation of wastewater sequences yet; microbial identity is pending.
-\textbf{(3)}~Mass correction is a negative result under current training; a mass-conditioned training loss is the next step.
-\textbf{(4)}~B/Y-ion bias gain is modest on clean E.\,coli EV data; its benefit may be larger on nosier wastewater spectra.
+\begin{itemize}[leftmargin=*,itemsep=1pt,topsep=2pt]
+\item Test set of 472 spectra is small; confidence intervals would tighten with larger benchmarks.
+\item No BLAST confirmation of wastewater sequences yet; microbial identity is pending.
+\item Mass correction is a negative result under current training; a mass-conditioned training loss is the next step.
+\item B/Y-ion bias gain is modest on clean E.\,coli EV data; its benefit may be larger on nosier wastewater spectra.
+\end{itemize}
 
 %% ─── 8. Related Work ─────────────────────────────────────────────────────────
 \section{Related Work}
