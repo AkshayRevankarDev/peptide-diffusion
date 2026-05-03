@@ -59,6 +59,9 @@ configs = [
     dict(label='NOVEL#9 SGIR',               use_beam=False, use_cfid=False, use_rerank=False, use_sgir=True,  use_mass_correct=False),
     dict(label='NOVEL#10 rerank-spectral',   use_beam=False, use_cfid=False, use_rerank=True,  use_sgir=False,
          n_rerank=10, T_sample=0.8, use_esm=False, use_mass_correct=False),
+    # NOVEL #8: mass-constrained beam search — constrains mass DURING decoding (correct fix)
+    dict(label='NOVEL#8 beam',               use_beam=True,  use_cfid=False, use_rerank=False, use_sgir=False, use_mass_correct=False),
+    dict(label='NOVEL#8 beam + SGIR',        use_beam=True,  use_cfid=False, use_rerank=False, use_sgir=True,  use_mass_correct=False),
 ]
 
 rows = []

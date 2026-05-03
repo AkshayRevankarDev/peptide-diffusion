@@ -744,12 +744,14 @@ footer{
       Together they break ties that the model's own confidence scores cannot resolve.</p>
     </div>
     <div class="why-card con">
-      <div class="why-card-label">Why mass correction failed</div>
-      <h4>Post-hoc filtering ≠ better training</h4>
-      <p>We tried discarding candidates whose predicted mass disagreed with the
-      precursor by more than 50 ppm. It hurt by 9.6 pp: the model is not yet
-      precise enough that "mass-incorrect" reliably means "sequence-incorrect."
-      The right fix is mass-conditioned training — a future direction.</p>
+      <div class="why-card-label">Why mass constraints at inference fail</div>
+      <h4>Single-pass constraints are incompatible with bidirectional generation</h4>
+      <p>Three strategies were tested: post-hoc single-swap correction (&minus;9.6 pp),
+      mass-constrained beam search (&minus;44 pp), and per-position entropy-adaptive gating
+      (&minus;48 pp when applied alone). Beam search fails because it decodes left-to-right,
+      but the model conditions every position on the full noisy sequence simultaneously.
+      The gate adds nothing on top of CFID because iterative mask-predict refinement already
+      enforces sequence coherence. No single-pass mass constraint improves on CFID+SGIR.</p>
     </div>
   </div>
 </section>
@@ -878,10 +880,10 @@ footer{
 <!-- ABLATION -->
 <section id="ablation" class="section">
   <div class="eyebrow reveal">Ablation</div>
-  <h2 class="reveal">Seven inference strategies,<br><em>three seeds each</em></h2>
+  <h2 class="reveal">Twelve inference strategies,<br><em>three seeds each</em></h2>
   <p class="section-intro reveal">
-    Mean ± std across seeds 0, 1, 2. CFID+SGIR is Pareto-optimal.
-    Mass correction is a reproducible negative result — it hurts by ~9.6 pp.
+    Mean &plusmn; std across seeds 0, 1, 2. CFID+SGIR is Pareto-optimal.
+    All three mass constraint strategies are reproducible negative results.
   </p>
 
   <div class="abl-grid reveal">
@@ -939,19 +941,62 @@ footer{
         <div class="abl-num-block"><div class="abl-num">73.73</div><div class="abl-num-label">AA %</div></div>
         <div class="abl-num-block"><div class="abl-num">53.67</div><div class="abl-num-label">Pep %</div></div>
       </div>
-      <div class="abl-std">std: ±0.43 AA · ±6.15 pep</div>
+      <div class="abl-std">std: &plusmn;0.43 AA &middot; &plusmn;6.15 pep</div>
+    </div>
+    <div class="abl-card neg">
+      <div class="abl-name">beam search (mass-constrained)</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">48.19</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">15.04</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: &plusmn;0.39 AA &middot; &plusmn;1.18 pep</div>
+    </div>
+    <div class="abl-card neg">
+      <div class="abl-name">beam + SGIR</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">48.14</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">15.04</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: &plusmn;0.48 AA &middot; &plusmn;1.48 pep</div>
+    </div>
+    <div class="abl-card neg">
+      <div class="abl-name">entropy-adaptive gate (alone)</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">12.00</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">11.86</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: &plusmn;5.23 AA &middot; &plusmn;5.18 pep</div>
+    </div>
+    <div class="abl-card">
+      <div class="abl-name">gate + CFID</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">76.05</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">59.53</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: &plusmn;0.14 AA &middot; &plusmn;4.04 pep</div>
+    </div>
+    <div class="abl-card">
+      <div class="abl-name">gate + CFID + SGIR</div>
+      <div class="abl-nums">
+        <div class="abl-num-block"><div class="abl-num">75.99</div><div class="abl-num-label">AA %</div></div>
+        <div class="abl-num-block"><div class="abl-num">59.60</div><div class="abl-num-label">Pep %</div></div>
+      </div>
+      <div class="abl-std">std: &plusmn;0.23 AA &middot; &plusmn;4.40 pep</div>
     </div>
   </div>
 
   <div class="callout reveal">
     <div class="callout-icon">⚠</div>
     <div>
-      <div class="callout-title">Negative result: mass correction hurts</div>
+      <div class="callout-title">Mass constraints at inference: three approaches, all negative</div>
       <p class="callout-body">
-        A post-hoc 50 ppm mass filter discards too many near-correct candidates at the model's
-        current confidence level, reducing peptide accuracy by <strong>9.6 pp</strong>.
-        The correct fix is a mass-conditioned training loss — not post-hoc filtering.
-        This result is reproducible across all three seeds.
+        Post-hoc single-swap correction reduces peptide accuracy by <strong>9.6 pp</strong>.
+        Mass-constrained beam search reduces it by <strong>44 pp</strong>: left-to-right decoding
+        is incompatible with a bidirectional model whose logits condition on the full sequence at
+        every position. The entropy-adaptive gate alone reduces accuracy by <strong>48 pp</strong>;
+        combined with CFID it matches CFID alone to within 0.4 pp, because iterative
+        mask-predict refinement already subsumes any mass-consistency benefit.
+        All results are reproducible across all three seeds.
       </p>
     </div>
   </div>

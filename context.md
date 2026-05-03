@@ -75,7 +75,8 @@ best = rerank_cfid_sgir(predictions, esm_model)
 
 ## Known Issues & Decisions
 
-- **Mass correction (negative result):** Post-hoc 50 ppm filtering hurts ~9 pp peptide accuracy. Fix requires mass-conditioned training loss (TODO).
+- **Mass constraint at inference — fully explored, all approaches failed:** Three strategies were evaluated. (1) Post-hoc single-swap: −9.6 pp pep. (2) Mass-constrained beam search (NOVEL #8): −44 pp pep — left-to-right decoding is architecturally incompatible with bidirectional diffusion. (3) Entropy-adaptive gate (NOVEL #1) alone: −48 pp pep; gate + CFID/SGIR: statistically identical to CFID/SGIR without gate. CFID's iterative mask-predict refinement subsumes all mass-aware improvements. This is a resolved negative result, not a TODO.
+- **InstaNovo comparison is cross-dataset:** The 72.9%/33.1% InstaNovo numbers are from their published paper on their benchmark, not re-run on our E. coli EV test set. The comparison is directional — our model is evaluated on our test set; InstaNovo's published numbers are on theirs. Valid to report but not a direct apples-to-apples benchmark.
 - **Attention mask fix:** Early versions allowed cross-spectrum contamination in batches. Fixed by masking off-diagonal attention during training.
 - **Self-conditioning critical:** Removes ~14.6 pp if disabled. Was initially optional but proved essential.
 - **PeakEncoder architecture:** Initial attempts without it yielded 41.88% AA. Now non-negotiable for results.

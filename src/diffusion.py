@@ -1016,6 +1016,12 @@ def generate_sequences(encoder, denoiser, spectra, precursor_masses,
                 t_next_vec = torch.full((N,), t_next, dtype=torch.long, device=device)
                 xt = q_sample(x0_hat, t_next_vec)
             else:
+                # NOVEL #1: entropy-adaptive mass gate — applied before any decoding path
+                if use_gate:
+                    logits, gc_map = entropy_adaptive_gate(logits, mass_t)
+                else:
+                    gc_map = None
+
                 log_fin = F.log_softmax(logits, dim=-1)  # (N, L, V)
 
                 # Store t=0 logits from last candidate for SGIR
@@ -1074,7 +1080,8 @@ def generate_sequences(encoder, denoiser, spectra, precursor_masses,
                     for i, seq in enumerate(x0_final.cpu().numpy()):
                         sequences[i].append(decode_tokens(seq))
                         spectral_lps[i].append(float(sp_lp[i].cpu()))
-                        gate_confs[i].append(1.0)
+                        gc_i = float(gc_map[i].mean().cpu()) if gc_map is not None else 1.0
+                        gate_confs[i].append(gc_i)
 
     return sequences, spectral_lps, gate_confs, t0_logits
 

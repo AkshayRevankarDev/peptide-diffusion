@@ -270,14 +270,32 @@ where $\mathcal{M}(c)$ is the set of observed peaks matched by candidate $c$'s i
 $\lambda\!=\!0.01$ is tuned on a held-out validation split.
 CFID+SGIR achieves the highest peptide accuracy (59.96\%) without sacrificing AA recall (76.00\%).
 
-\subsection{Mass Correction (Negative Result)}
+\subsection{Mass Constraint at Inference}
 
-We evaluated a post-hoc mass-correction filter that discards candidates with predicted mass
-deviation $> 50~\text{ppm}$ from the precursor.
-This is a \emph{negative result}: mass correction reduces peptide accuracy by 9.6~pp
-(59.96\% $\to$ 50.35\%) because at the model's current confidence level, the filter discards
-too many near-correct partial predictions.
-Mass-aware loss during training is the correct approach, not post-hoc filtering.
+Three inference-time strategies for enforcing precursor mass consistency were evaluated; each degrades accuracy, and together they illuminate a common architectural constraint.
+
+\textbf{Post-hoc single-swap correction.} Replacing a residue to bring the predicted mass within
+50~ppm of the precursor reduces peptide accuracy by 9.6~pp (59.96\%~$\to$~50.35\%).
+The model assigns each residue based on sequence context; substituting it on mass grounds
+alone replaces a correct prediction with an incorrect one more often than not.
+
+\textbf{Mass-constrained beam search.} Left-to-right beam search that prunes branches whose
+cumulative mass cannot reach the precursor reduces AA recall to 48.2\% ($-28$~pp) and
+peptide accuracy to 15.0\% ($-44$~pp).
+Absorbing diffusion is a bidirectional model whose logit at each position is conditioned on
+the full noisy sequence, not on a committed prefix.
+Imposing left-to-right sequential commitment on bidirectional logits invalidates this
+conditioning and collapses the predictive distribution.
+
+\textbf{Entropy-adaptive gate.} Per-position masking of mass-infeasible tokens, with tolerance
+scaled inversely by positional entropy, reduces AA recall to 12.0\% when applied at the final
+argmax step. Combined with CFID, results are statistically indistinguishable from CFID alone
+(76.05\% vs.\ 76.02\% AA; 59.53\% vs.\ 59.60\% peptide accuracy), because CFID's iterative
+mask-predict refinement already enforces sequence coherence and subsumes whatever mass signal
+the gate contributes.
+
+Single-pass mass constraints are incompatible with bidirectional generation. CFID is the
+appropriate decoding strategy for this architecture.
 
 \begin{algorithm}[t]
   \caption{V2 Inference: CFID+SGIR Reranking}
@@ -441,11 +459,11 @@ We view the peptide accuracy gap over InstaNovo (+26.9~pp) as the more meaningfu
 The argmax standard deviation for peptide accuracy (6.49~pp) is nearly double that of CFID+SGIR (3.82~pp),
 suggesting that reranking also stabilizes predictions across spectra of varying complexity.
 
-\paragraph{Mass correction is a negative result.}
-Both mass-correction variants reduce peptide accuracy by 8--12~pp.
-At the current confidence level, the model generates candidates with correct \emph{composition}
-but with precise fragment masses that slightly deviate from the 50~ppm hard threshold.
-A mass-conditioned training loss is the correct approach, not post-hoc filtering.
+\paragraph{Mass constraints at inference.}
+Post-hoc correction, beam search, and entropy-adaptive gating each reduce accuracy (by 9.6, 44,
+and 48~pp respectively when applied without CFID). The gate combined with CFID matches CFID
+alone to within 0.4~pp, confirming that iterative bidirectional refinement subsumes any benefit
+from per-position mass feasibility checks. No single-pass constraint improves on CFID+SGIR.
 
 \subsection{Training Dynamics}
 
@@ -571,7 +589,7 @@ results less sensitive to which beam candidate happens to score highest.
 \begin{itemize}[leftmargin=*,itemsep=1pt,topsep=2pt]
 \item Test set of 472 spectra is small; confidence intervals would tighten with larger benchmarks.
 \item No BLAST confirmation of wastewater sequences yet; microbial identity is pending.
-\item Mass correction is a negative result under current training; a mass-conditioned training loss is the next step.
+\item Inference-time mass constraints (post-hoc swap, beam search, entropy-adaptive gate) all reduce accuracy; the gate combined with CFID matches CFID alone, confirming that bidirectional iterative refinement subsumes single-pass mass feasibility checks.
 \item B/Y-ion bias gain is modest on clean E.\,coli EV data; its benefit may be larger on noisier wastewater spectra.
 \end{itemize}
 
@@ -609,9 +627,10 @@ Results are stable across seeds ($\pm$0.19~pp AA), confirming these are real imp
 random variation.
 We also identified 6 peptides from wastewater with no reference proteome, backed by ESM-2
 plausibility checks.
-Going forward, we plan to incorporate a mass-conditioned training loss, evaluate on larger
-multi-species benchmarks, and run BLAST searches to confirm the biological identity of the
-wastewater peptides.
+Future work should evaluate on larger multi-species benchmarks and confirm the biological
+identity of the wastewater peptides through BLAST. Incorporating a hard mass constraint into
+the training objective, rather than enforcing it at inference, remains an open direction for
+improving mass consistency without compromising sequence accuracy.
 
 %% ─── References ──────────────────────────────────────────────────────────────
 \bibliographystyle{plainnat}

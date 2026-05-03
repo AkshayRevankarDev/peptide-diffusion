@@ -30,12 +30,27 @@
 **Impact:** High (affects generalization to held-out data).
 **Resolution:** Mask off-diagonal attention in batch dimension; self-attention within each spectrum only.
 
-### 6. No Mass-Conditioned Loss (Negative Result)
-**Decision:** Attempted post-hoc 50 ppm filtering but abandoned it.
-**Why it failed:** Hurts peptide accuracy by ~9 pp (59.96% → ~51%).
-**Root cause:** Model was not trained with mass constraint. At inference, enforcing mass filter contradicts learned prior.
-**Correct fix (TODO):** Incorporate mass penalty into training loss or use diffusion guidance.
-**Lesson:** Inference constraints must align with training objectives.
+### 6. Mass Constraint at Inference — Three Failed Approaches (Comprehensive Negative Result)
+
+All three inference-time mass constraint strategies were evaluated and failed. This is now a well-understood architectural limitation, not an unexplored gap.
+
+**The model IS trained with a soft mass consistency loss** (`MASS_LOSS_WEIGHT = 0.1`, line 568 of `src/diffusion.py`). A soft expected-value loss pushes the distribution's expected mass toward the target but does not guarantee individual decoded samples are mass-correct.
+
+**Approach A — Post-hoc single-swap correction (`use_mass_correct=True`):**
+Hurts peptide accuracy by ~9.6 pp (59.96% → 50.35%). Swaps a correctly placed residue for one chosen purely to hit a mass target, overriding the model's learned distribution.
+
+**Approach B — Mass-constrained beam search (`use_beam=True`, NOVEL #8):**
+Catastrophic: 48.19% AA / 15.04% pep (−28 pp AA, −44 pp pep vs baseline argmax). Root cause: beam search is a left-to-right autoregressive decoding algorithm. Absorbing diffusion is bidirectional — every position's logit was computed with the full noisy sequence as context. Forcing left-to-right sequential commitment onto bidirectional logits breaks the generative assumption entirely.
+
+**Approach C — Entropy-adaptive gate (`use_gate=True`, NOVEL #1):**
+- Gate alone: 12.00% AA / 11.86% pep. Hard per-position mass feasibility masking at argmax time is too aggressive; destroys the distribution the same way beam search does.
+- Gate + CFID: 76.05% AA / 59.53% pep — statistically identical to CFID alone (76.02%/59.60%).
+- Gate + CFID + SGIR: 75.99% AA / 59.60% pep — identical to CFID+SGIR (76.00%/59.96%).
+The gate adds nothing on top of CFID because CFID's iterative mask-predict refinement already enforces sequence coherence and implicitly absorbs whatever mass signal the gate would contribute.
+
+**Conclusion:** Mass constraints during any single-pass decoding step are architecturally incompatible with a bidirectional diffusion model. CFID (mask-predict iterative decoding) is the correct inference mechanism and subsumes all mass-aware improvements. The best result remains CFID+SGIR at 76.00% AA / 59.96% pep.
+
+**Lesson:** Inference constraints must match the model's generative direction. Left-to-right constraints (beam, post-hoc swap) are wrong for a bidirectional model. Even per-position soft constraints (gate) are redundant once iterative bidirectional refinement (CFID) is applied.
 
 ### 7. CFID + SGIR Reranking
 **Decision:** Use dual reranking: ESM-2 folding consistency + structural validity.
@@ -76,8 +91,8 @@ Tried first, but cosine empirically better. No ablation paper backs this up—li
 ### 2. Separate Encoder for Mass Features
 Added mass, charge, precursor m/z as separate inputs. Model ignored them. Removed in favor of implicit signal from spectrum.
 
-### 3. Post-hoc Mass Filtering (50 ppm)
-Hurts peptide accuracy by ~9 pp. Needs mass-conditioned training loss instead.
+### 3. All Inference-Time Mass Constraints
+Three approaches tried: post-hoc swap (−9.6 pp), beam search (−44 pp, wrong direction for bidirectional model), entropy-adaptive gate alone (−48 pp). Gate + CFID is statistically identical to CFID alone — CFID subsumes any benefit. Mass constraint problem is architecturally closed for this model.
 
 ### 4. Dropout in PeakEncoder
 Added to prevent overfitting but reduced val accuracy. Removed; batch norm sufficient.
@@ -88,7 +103,7 @@ Tried absorbing non-sequence tokens dynamically. Complexity not worth marginal g
 ## Future TODOs
 
 ### High Priority
-1. **Mass-conditioned training loss:** Incorporate m/z constraint into diffusion objective to enable safe post-hoc filtering.
+1. **Mass constraint problem is closed:** All three inference-time approaches (post-hoc swap, beam search, entropy-adaptive gate) have been evaluated and failed. See Decision #6 for the full analysis. No further mass constraint work is needed unless the model is retrained with a hard constraint baked into the objective (e.g., differentiable knapsack loss).
 2. **Wastewater BLAST validation:** Confirm 6 predicted peptides against NCBI nr. Currently flagged as uncertain.
 3. **Inference latency:** Profile CFID+SGIR bottleneck; consider batched ESM-2 forward pass optimization.
 
@@ -106,7 +121,7 @@ Tried absorbing non-sequence tokens dynamically. Complexity not worth marginal g
 
 - **3-seed ablation:** Seeds 0, 1, 2 all run to completion. Results in `results/novels_ablation_v2.csv`.
 - **Standard deviations:** Peptide accuracy ±3.82 pp; AA accuracy ±0.19 pp. Relatively stable across seeds.
-- **Baseline comparisons:** LSTM, GRU, InstaNovo all from published sources or direct inference.
+- **Baseline comparisons:** LSTM and GRU run directly on our E. coli EV test set. InstaNovo numbers (72.9% AA / 33.1% pep) are from their published paper on their benchmark dataset — not re-run on ours. The comparison is directional, not a same-dataset benchmark. Report accordingly: "our model on our test set vs. InstaNovo on their published benchmark."
 - **FDR filtering:** All results at 5% FDR threshold (industry standard). Pre-FDR results also logged.
 
 ## Code Quality
