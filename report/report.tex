@@ -297,6 +297,21 @@ the gate contributes.
 Single-pass mass constraints are incompatible with bidirectional generation. CFID is the
 appropriate decoding strategy for this architecture.
 
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{../figures/figure8_mass_constraints.png}
+  \caption{
+    \textbf{Mass constraint strategies vs.\ CFID+SGIR baseline.}
+    Post-hoc swap reduces peptide accuracy by 9.6~pp.
+    Beam search collapses both metrics (AA recall to 48\%, peptide accuracy to 15\%)
+    because left-to-right decoding is incompatible with the bidirectional diffusion model.
+    The entropy-adaptive gate alone is similarly catastrophic (12\% AA).
+    Gate combined with CFID matches the ungated CFID+SGIR baseline to within 0.4~pp,
+    confirming that iterative bidirectional refinement subsumes any mass-feasibility benefit.
+  }
+  \label{fig:mass_constraints}
+\end{figure}
+
 \begin{algorithm}[t]
   \caption{V2 Inference: CFID+SGIR Reranking}
   \label{alg:inference}
@@ -424,10 +439,10 @@ We view the peptide accuracy gap over InstaNovo (+26.9~pp) as the more meaningfu
   \centering
   \includegraphics[width=\columnwidth]{../figures/figure6_ablation.png}
   \caption{
-    \textbf{Inference strategy ablation.}
-    Error bars show $\pm$std over 3 seeds.
-    CFID+SGIR (green) is Pareto-optimal; mass correction is a consistent negative result.
-    Red dashed line marks InstaNovo performance.
+    \textbf{Inference strategy ablation} (7 strategies, 3 seeds each).
+    Error bars show $\pm$std. CFID+SGIR (green) is Pareto-optimal on both metrics.
+    Mass-correction variants (red) consistently reduce peptide accuracy by 8--12~pp.
+    Red dashed line marks InstaNovo published performance.
   }
   \label{fig:ablation}
 \end{figure}
